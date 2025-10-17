@@ -65,13 +65,18 @@ def move(game_state: typing.Dict) -> typing.Dict:
 
     #board[x][y] :: my_body -> 1,my_neck -> 2,my_tail -> 3,food -> -1,empty -> 0 
     board = [[0 for j in range(board_width)] for i in range(board_height)]
+    board_copy = [[0 for j in range(board_width)] for i in range(board_height)]
 
     for food in foods:
         board[food['x']][food['y']] = -1
+        board_copy[food['x']][food['y']] = -1
     board[my_head['x']][my_head['y']] = 1
+    board_copy[my_head['x']][my_head['y']] = 1
     for i in range(1,body_length - 1):
         board[my_body[i]['x']][my_body[i]['y']] = 2
+        board_copy[my_body[i]['x']][my_body[i]['y']] = 2
     board[my_tail['x']][my_tail['y']] = 3
+    board_copy[my_tail['x']][my_tail['y']] = 3
 
     #FOOD_PENALTY : tendency to avoid foods
     FOOD_PENALTY = -1
@@ -84,7 +89,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
     TAIL_BOUNAUS = 1.2
     if(body_length >= 12):
         TAIL_BOUNAUS = 10
-    if(body_length >=18):
+    if(body_length >= 18):
         TAIL_BOUNAUS = 60
     
     #TODO : Prevent your Battlesnake from moving out of bounds and colliding with itself(TODO 1 and 2)
@@ -114,7 +119,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
             next_x -= 1
         elif move == 'right':
             next_x += 1
-        reachble_counts[move] = count_reachble_ways(next_x,next_y,0,board,my_health)
+        reachble_counts[move] = count_reachble_ways(next_x,next_y,0,board,board_copy,my_health)
 
     # TODO : Prevent food if health is above health_level
     health_level = 20
@@ -172,16 +177,21 @@ def move(game_state: typing.Dict) -> typing.Dict:
         print(tail_points)
 
     print(f"MOVE {game_state['turn']}: {next_move}")
+    print("\n")
     return {"move": next_move}
 
-def count_reachble_ways(next_x,next_y,depth,board,my_health):
-    if is_empty(next_x,next_y,board,my_health) == False:
+def count_reachble_ways(next_x,next_y,depth,board,board_copy,my_health):
+    if is_empty(next_x,next_y,board,my_health) == False or board_copy[next_x][next_y] == -2:
         return depth
     else:
-        if depth == 7:
+        board_copy[next_x][next_y] = -2
+        if depth == 8:
+            board_copy[next_x][next_y] = board[next_x][next_y]
             return depth
         else:
-            return count_reachble_ways(next_x + 1,next_y,depth + 1,board,my_health) + count_reachble_ways(next_x - 1,next_y,depth + 1,board,my_health) + count_reachble_ways(next_x,next_y + 1,depth + 1,board,my_health) + count_reachble_ways(next_x,next_y - 1,depth + 1,board,my_health)  
+            counts =  count_reachble_ways(next_x + 1,next_y,depth + 1,board,board_copy,my_health) + count_reachble_ways(next_x - 1,next_y,depth + 1,board,board_copy,my_health) + count_reachble_ways(next_x,next_y + 1,depth + 1,board,board_copy,my_health) + count_reachble_ways(next_x,next_y - 1,depth + 1,board,board_copy,my_health)  
+            board_copy[next_x][next_y] = board[next_x][next_y]
+            return counts
 
 # return True if board[x][y] is food(-1)
 def is_food(x,y,board):
