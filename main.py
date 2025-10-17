@@ -65,27 +65,33 @@ def move(game_state: typing.Dict) -> typing.Dict:
 
     #board[x][y] :: my_body -> 1,my_neck -> 2,my_tail -> 3,food -> -1,empty -> 0 
     board = [[0 for j in range(board_width)] for i in range(board_height)]
+    board_copy = [[0 for j in range(board_width)] for i in range(board_height)]
 
     for food in foods:
         board[food['x']][food['y']] = -1
+        board_copy[food['x']][food['y']] = -1
     board[my_head['x']][my_head['y']] = 1
+    board_copy[my_head['x']][my_head['y']] = 1
     for i in range(1,body_length - 1):
         board[my_body[i]['x']][my_body[i]['y']] = 2
+        board_copy[my_body[i]['x']][my_body[i]['y']] = 2
     board[my_tail['x']][my_tail['y']] = 3
+    board_copy[my_tail['x']][my_tail['y']] = 3
+    print(board)
 
     #FOOD_PENALTY : tendency to avoid foods
     FOOD_PENALTY = -1
     if(body_length >= 12):
-        FOOD_PENALTY = 0.4
+        FOOD_PENALTY = 0.2
     if(body_length >= 16):
-        FOOD_PENALTY = 0.95
+        FOOD_PENALTY = 0.8
     
     # TAIL_BOUNAUS : tendency to approach my tail
-    TAIL_BOUNAUS = 1.2
+    TAIL_BOUNAUS = 1.1
     if(body_length >= 12):
         TAIL_BOUNAUS = 10
-    if(body_length >=18):
-        TAIL_BOUNAUS = 60
+    if(body_length >= 18):
+        TAIL_BOUNAUS = 15
     
     #TODO : Prevent your Battlesnake from moving out of bounds and colliding with itself(TODO 1 and 2)
     if is_empty(my_head['x'] + 1,my_head['y'],board,my_health) == False:
@@ -114,7 +120,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
             next_x -= 1
         elif move == 'right':
             next_x += 1
-        reachble_counts[move] = count_reachble_ways(next_x,next_y,0,board,my_health)
+        reachble_counts[move] = count_reachble_ways(next_x,next_y,0,board,board_copy,my_health,body_length,my_body)
 
     # TODO : Prevent food if health is above health_level
     health_level = 20
@@ -172,16 +178,27 @@ def move(game_state: typing.Dict) -> typing.Dict:
         print(tail_points)
 
     print(f"MOVE {game_state['turn']}: {next_move}")
+    print("\n")
     return {"move": next_move}
 
-def count_reachble_ways(next_x,next_y,depth,board,my_health):
-    if is_empty(next_x,next_y,board,my_health) == False:
+def count_reachble_ways(next_x,next_y,depth,board,board_copy,my_health,body_length,my_body):
+    if is_empty(next_x,next_y,board,my_health) == False or board_copy[next_x][next_y] == -2:
         return depth
     else:
-        if depth == 7:
+        board_copy[next_x][next_y] = -2
+        tail_x = my_body[max(body_length - depth - 1,0)]['x']
+        tail_y = my_body[max(body_length - depth - 1,0)]['y']
+        board_copy[tail_x][tail_y] = 0
+        if depth == 10:
+            board_copy[next_x][next_y] = board[next_x][next_y]
+            board_copy[tail_x][tail_y] = board[tail_x][tail_y]
             return depth
         else:
-            return count_reachble_ways(next_x + 1,next_y,depth + 1,board,my_health) + count_reachble_ways(next_x - 1,next_y,depth + 1,board,my_health) + count_reachble_ways(next_x,next_y + 1,depth + 1,board,my_health) + count_reachble_ways(next_x,next_y - 1,depth + 1,board,my_health)  
+            #return 
+            count =  max(count_reachble_ways(next_x + 1,next_y,depth + 1,board,board_copy,my_health,body_length,my_body) , count_reachble_ways(next_x - 1,next_y,depth + 1,board,board_copy,my_health,body_length,my_body) , count_reachble_ways(next_x,next_y + 1,depth + 1,board,board_copy,my_health,body_length,my_body) , count_reachble_ways(next_x,next_y - 1,depth + 1,board,board_copy,my_health,body_length,my_body) ) 
+            board_copy[next_x][next_y] = board[next_x][next_y]
+            board_copy[tail_x][tail_y] = board[tail_x][tail_y]
+            return count
 
 # return True if board[x][y] is food(-1)
 def is_food(x,y,board):
@@ -195,7 +212,7 @@ def is_food(x,y,board):
 def is_empty(x,y,board,my_health):
     if x < 0 or y < 0 or x >= 6 or y >= 6:
         return False
-    if board[x][y] == 0 or board[x][y] == -1 or (board[x][y] == 3 and  my_health != 100 ):   #empty,food,tail
+    if board[x][y] == 0 or board[x][y] == -1 or (board[x][y] == 3 and  my_health < 99 ):   #empty,food,tail
         return True
     else:
         return False
