@@ -38,135 +38,167 @@ def start(game_state: typing.Dict):
 def end(game_state: typing.Dict):
     print("GAME OVER\n")
 
-
 # move is called on every turn and returns your next move
 # Valid moves are "up", "down", "left", or "right"
 # See https://docs.battlesnake.com/api/example-move for available data
 def move(game_state: typing.Dict) -> typing.Dict:
-
     is_move_safe = {"up": True, "down": True, "left": True, "right": True}
-    move_points = {"up": 0, "down": 0, "left": 0, "right": 0}
+    #food_points : tendency to approach foods
+    food_points = {"up": 1, "down": 1, "left": 1, "right": 1}
+    #reachble_counts : to assess the size of the space
+    reachble_counts = {"up": 0, "down": 0, "left": 0, "right": 0}
+    #tail_points : tendency to approach my tail
+    tail_points = {"up": 1, "down": 1, "left": 1, "right": 1}
 
     # We've included code to prevent your Battlesnake from moving backwards
-    my_head = game_state["you"]["body"][0]  # Coordinates of your head
-    my_neck = game_state["you"]["body"][1]  # Coordinates of your "neck"
+    my_body = game_state["you"]["body"]
+    body_length = game_state["you"]["length"]
+    foods = game_state["board"]["food"]
+    my_health = game_state["you"]["health"]
 
-    if my_neck["x"] < my_head["x"]:  # Neck is left of head, don't move left
-        is_move_safe["left"] = False
+    my_head = my_body[0]
+    my_neck = my_body[1]
+    my_tail = my_body[body_length - 1]
 
-    elif my_neck["x"] > my_head["x"]:  # Neck is right of head, don't move right
-        is_move_safe["right"] = False
-
-    elif my_neck["y"] < my_head["y"]:  # Neck is below head, don't move down
-        is_move_safe["down"] = False
-
-    elif my_neck["y"] > my_head["y"]:  # Neck is above head, don't move up
-        is_move_safe["up"] = False
-
-    # TODO: Step 1 - Prevent your Battlesnake from moving out of bounds
     board_width = game_state['board']['width']
     board_height = game_state['board']['height']
-    body_length = game_state["you"]["length"]
-    if my_head["x"] == 0:
-        is_move_safe["left"] = False
-    elif my_head["x"] == board_width-1:
-        is_move_safe["right"] = False
-    if my_head["y"] == board_height-1:
-        is_move_safe["up"] = False
-    elif my_head["y"] == 0:
-        is_move_safe["down"] = False
-    my_body_average = {"x": 0, "y": 0}
-    # TODO: Step 2 - Prevent your Battlesnake from colliding with itself
-    for i in range(2, body_length - 1):
-        my_body = game_state["you"]["body"][i]
-        my_body_average["x"] += my_body['x']
-        my_body_average["y"] += my_body['y']
-        if my_body['x'] == my_head['x'] and my_body['y'] == my_head['y'] + 1:
-            is_move_safe['up'] = False
-        if my_body['x'] == my_head['x'] and my_body['y'] == my_head['y'] - 1:
-            is_move_safe['down'] = False
-        if my_body['x'] == my_head['x'] + 1 and my_body['y'] == my_head['y']:
-            is_move_safe['right'] = False
-        if my_body['x'] == my_head['x'] - 1 and my_body['y'] == my_head['y']:
-            is_move_safe['left'] = False
-    my_body_average['x'] /= body_length
-    my_body_average['y'] /= body_length
+
+    #board[x][y] :: my_body -> 1,my_neck -> 2,my_tail -> 3,food -> -1,empty -> 0 
+    board = [[0 for j in range(board_width)] for i in range(board_height)]
+
+    for food in foods:
+        board[food['x']][food['y']] = -1
+    board[my_head['x']][my_head['y']] = 1
+    for i in range(1,body_length - 1):
+        board[my_body[i]['x']][my_body[i]['y']] = 2
+    board[my_tail['x']][my_tail['y']] = 3
+
+    #FOOD_PENALTY : tendency to avoid foods
+    FOOD_PENALTY = -1
+    if(body_length >= 12):
+        FOOD_PENALTY = 0.4
+    if(body_length >= 16):
+        FOOD_PENALTY = 0.95
+    
+    # TAIL_BOUNAUS : tendency to approach my tail
+    TAIL_BOUNAUS = 1.2
+    if(body_length >= 12):
+        TAIL_BOUNAUS = 10
+    if(body_length >=18):
+        TAIL_BOUNAUS = 60
+    
+    #TODO : Prevent your Battlesnake from moving out of bounds and colliding with itself(TODO 1 and 2)
+    if is_empty(my_head['x'] + 1,my_head['y'],board,my_health) == False:
+        is_move_safe['right'] = False
+    if is_empty(my_head['x'] - 1,my_head['y'],board,my_health) == False:
+        is_move_safe['left'] = False
+    if is_empty(my_head['x'],my_head['y'] + 1,board,my_health) == False:
+        is_move_safe['up'] = False    
+    if is_empty(my_head['x'],my_head['y'] - 1,board,my_health) == False:
+        is_move_safe['down'] = False
+
     # Are there any safe moves left?
     safe_moves = []
     for move, isSafe in is_move_safe.items():
         if isSafe:
             safe_moves.append(move)
+    
+    #TODO : Count available moves
+    for move in safe_moves:
+        next_x,next_y = my_head['x'],my_head['y']
+        if move == 'up':
+            next_y += 1
+        elif move == 'down':
+            next_y -= 1
+        elif move == 'left':
+            next_x -= 1
+        elif move == 'right':
+            next_x += 1
+        reachble_counts[move] = count_reachble_ways(next_x,next_y,0,board,my_health)
 
-    # TODO: Step 3 - Prevent your Battlesnake from colliding with other Battlesnakes
-    # opponents = game_state['board']['snakes']
     # TODO : Prevent food if health is above health_level
     health_level = 20
-    foods = game_state["board"]["food"]
-    my_health = game_state["you"]["health"]
-    if my_health > health_level :
-        for food in foods:
-            if my_head['x'] == food['x'] and my_head['y'] + 1 == food['y']:
-                move_points['up'] -= 20
-            if my_head['x'] == food['x'] and my_head['y'] - 1 == food['y']:
-                move_points['down'] -= 20
-            if my_head['x'] == food['x'] + 1 and my_head['y'] == food['y']:
-                move_points['left'] -= 20
-            if my_head['x'] == food['x'] - 1 and my_head['y'] == food['y']:
-                move_points['right'] -= 20             
-    else:
+    if my_health > health_level :   #when snake avoid foods
+        if my_head['x'] < board_width - 1 and board[my_head['x'] + 1][my_head['y']] == -1:
+            food_points['right'] = FOOD_PENALTY
+        if my_head['x'] > 0 and board[my_head['x'] - 1][my_head['y']] == -1:
+            food_points['left'] = FOOD_PENALTY
+        if my_head['y'] < board_height - 1 and board[my_head['x']][my_head['y'] + 1] == -1:
+            food_points['up'] = FOOD_PENALTY
+        if my_head['y'] > 0 and board[my_head['x']][my_head['y'] - 1] == -1:
+            food_points['down'] = FOOD_PENALTY      
+    else:   #when snake aproach foods
         min_food = {"x": 0, "y": 0}
         min_distance = 12
+        TAIL_BOUNAUS = 2
+        # set min_food and min_disatance
         for food in foods: 
             distance = abs(my_head['x'] - food['x']) + abs(my_head['y'] - food['y'])
             if distance <= min_distance:
                 min_food = food
                 min_distance = distance
         if min_food['x'] > my_head['x']:
-            move_points["right"] += 30
+            food_points["right"] += (min_food['x'] - my_head['x']) * (health_level - my_health)
         else:
-            move_points["left"] += 30
+            food_points["left"] += (my_head['x'] - min_food['x']) * (health_level - my_health)
         if min_food['y'] > my_head['y']:
-            move_points["up"] += 30
+            food_points["up"] += (min_food['y'] - my_head['y']) * (health_level - my_health)
         else:
-            move_points["down"] += 30
+            food_points["down"] += (my_head['y'] - min_food['y']) * (health_level - my_health)
 
-    # TODO : intend to approch center of the board
-    '''    
-    board_xplus = my_head['x'] - 2.5
-    board_yplus = my_head['y'] - 2.5
-    move_points['left'] += board_xplus*2
-    move_points['right'] -= board_xplus*2
+    if my_tail['y'] > my_head['y']:
+        tail_points['up'] = TAIL_BOUNAUS
+    elif my_tail['y'] < my_head['y']:
+        tail_points['down'] = TAIL_BOUNAUS
+    if my_tail['x'] > my_head['x']:
+        tail_points['right'] = TAIL_BOUNAUS
+    elif my_tail['x'] < my_head['x']:
+        tail_points['left'] = TAIL_BOUNAUS
 
-    move_points['down'] += board_yplus*2
-    move_points['up'] -= board_yplus*2
-    '''
-    '''
-    average_yplus = my_head['y'] - my_body_average["y"]
-    average_xplus = my_head['x'] - my_body_average["x"]
-    move_points['left'] -= 6/average_xplus
-    move_points['right'] += 6/average_xplus
-
-    move_points['down'] -= 6/average_yplus
-    move_points['up'] += 6/average_yplus
-    '''
+    # TODO : Decide next move
     if len(safe_moves) == 0:
         print(f"MOVE {game_state['turn']}: No safe moves detected! Moving down")
         return {"move": "down"}
     else:
-        next_move = max(safe_moves, key=lambda move: move_points[move])
+        #next_move is high scoring move in safe_moves 
+        next_move = max(safe_moves, key=lambda move: food_points[move] * reachble_counts[move] * tail_points[move])
+        print("safe_moves:")
         print(safe_moves)
-        print(move_points)
-
-    # Choose a random move from the safe ones
-    #next_move = random.choice(safe_moves)
-    
-
-    # TODO: Step 4 - Move towards food instead of random, to regain health and survive longer
-    # food = game_state['board']['food']
+        print("food_points:")
+        print(food_points)
+        print("reachble_counts:")
+        print(reachble_counts)
+        print("tail_point")
+        print(tail_points)
 
     print(f"MOVE {game_state['turn']}: {next_move}")
     return {"move": next_move}
 
+def count_reachble_ways(next_x,next_y,depth,board,my_health):
+    if is_empty(next_x,next_y,board,my_health) == False:
+        return depth
+    else:
+        if depth == 7:
+            return depth
+        else:
+            return count_reachble_ways(next_x + 1,next_y,depth + 1,board,my_health) + count_reachble_ways(next_x - 1,next_y,depth + 1,board,my_health) + count_reachble_ways(next_x,next_y + 1,depth + 1,board,my_health) + count_reachble_ways(next_x,next_y - 1,depth + 1,board,my_health)  
+
+# return True if board[x][y] is food(-1)
+def is_food(x,y,board):
+    if x < 0 or y < 0 or x >= 6 or y >= 6:
+        return False
+    if board[x][y] == -1:
+        return True
+    return False
+
+# return True if board[x][y] is empty(0,-1,3)
+def is_empty(x,y,board,my_health):
+    if x < 0 or y < 0 or x >= 6 or y >= 6:
+        return False
+    if board[x][y] == 0 or board[x][y] == -1 or (board[x][y] == 3 and  my_health != 100 ):   #empty,food,tail
+        return True
+    else:
+        return False
 
 # Start server when `python main.py` is run
 if __name__ == "__main__":
