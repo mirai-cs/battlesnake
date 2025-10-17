@@ -119,7 +119,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
             next_x -= 1
         elif move == 'right':
             next_x += 1
-        reachble_counts[move] = count_reachble_ways(next_x,next_y,0,board,board_copy,my_health)
+        reachble_counts[move] = count_reachble_ways(next_x,next_y,0,board,board_copy,my_health,body_length,my_body)
 
     # TODO : Prevent food if health is above health_level
     health_level = 20
@@ -180,17 +180,22 @@ def move(game_state: typing.Dict) -> typing.Dict:
     print("\n")
     return {"move": next_move}
 
-def count_reachble_ways(next_x,next_y,depth,board,board_copy,my_health):
+def count_reachble_ways(next_x,next_y,depth,board,board_copy,my_health,body_length,my_body):
     if is_empty(next_x,next_y,board,my_health) == False or board_copy[next_x][next_y] == -2:
         return depth
     else:
         board_copy[next_x][next_y] = -2
+        #tail_x = my_body[min(body_length - depth - 1,body_length - 1)]['x']
+        #tail_y = my_body[min(body_length - depth - 1,body_length - 1)]['y']
+        #board_copy[tail_x][tail_y] = 0
         if depth == 8:
             board_copy[next_x][next_y] = board[next_x][next_y]
+            #board_copy[tail_x][tail_y] = board[tail_x][tail_y]
             return depth
         else:
-            counts =  count_reachble_ways(next_x + 1,next_y,depth + 1,board,board_copy,my_health) + count_reachble_ways(next_x - 1,next_y,depth + 1,board,board_copy,my_health) + count_reachble_ways(next_x,next_y + 1,depth + 1,board,board_copy,my_health) + count_reachble_ways(next_x,next_y - 1,depth + 1,board,board_copy,my_health)  
+            counts =  count_reachble_ways(next_x + 1,next_y,depth + 1,board,board_copy,my_health,body_length,my_body) + count_reachble_ways(next_x - 1,next_y,depth + 1,board,board_copy,my_health,body_length,my_body) + count_reachble_ways(next_x,next_y + 1,depth + 1,board,board_copy,my_health,body_length,my_body) + count_reachble_ways(next_x,next_y - 1,depth + 1,board,board_copy,my_health,body_length,my_body)  
             board_copy[next_x][next_y] = board[next_x][next_y]
+            #board_copy[tail_x][tail_y] = board[tail_x][tail_y]
             return counts
 
 # return True if board[x][y] is food(-1)
