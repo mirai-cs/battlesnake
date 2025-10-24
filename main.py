@@ -63,9 +63,9 @@ class Board:
         self.grid = [[0 for j in range(self.width)] for i in range(self.height)]
         self.my_snake = my_snake
         self.grid_copy = copy.deepcopy(self.grid)
-        self.init_grid()
+        self._init_grid()
 
-    def init_grid(self):
+    def _init_grid(self):
         for food in self.foods:
             self.grid[food['x']][food['y']] = FOOD
         self.grid[self.my_snake.head['x']][self.my_snake.head['y']] = MY_HEAD
@@ -185,10 +185,10 @@ class Evaluator:
             elif move == 'right':
                 next_x += 1
             current_depth = 0
-            reachble_counts[move] = self.count_reachble_ways(next_x,next_y,current_depth)
+            reachble_counts[move] = self._count_reachble_ways(next_x,next_y,current_depth)
         return reachble_counts
 
-    def count_reachble_ways(self,next_x,next_y,depth):
+    def _count_reachble_ways(self,next_x,next_y,depth):
         if self.is_empty(next_x,next_y) == False or self.grid_copy[next_x][next_y] == EXPLORED:
             return depth
         max_depth = depth
@@ -203,10 +203,10 @@ class Evaluator:
 
         MAX_DEPTH = 12
         if depth < MAX_DEPTH:
-            max_depth = max(self.count_reachble_ways(next_x + 1,next_y,depth + 1),
-                            self.count_reachble_ways(next_x - 1,next_y,depth + 1), 
-                            self.count_reachble_ways(next_x,next_y + 1,depth + 1),
-                            self.count_reachble_ways(next_x,next_y - 1,depth + 1)) 
+            max_depth = max(self._count_reachble_ways(next_x + 1,next_y,depth + 1),
+                            self._count_reachble_ways(next_x - 1,next_y,depth + 1), 
+                            self._count_reachble_ways(next_x,next_y + 1,depth + 1),
+                            self._count_reachble_ways(next_x,next_y - 1,depth + 1)) 
         self.grid_copy[next_x][next_y] = self.board.grid[next_x][next_y]
         if tail_index >= 0:
             self.grid_copy[tail_x][tail_y] = self.board.grid[tail_x][tail_y]
