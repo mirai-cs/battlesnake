@@ -82,25 +82,25 @@ def move(game_state: typing.Dict) -> typing.Dict:
     #FOOD_PENALTY : tendency to avoid foods
     FOOD_PENALTY = -1
     if(body_length >= 12):
-        FOOD_PENALTY = 0.2
+        FOOD_PENALTY = 0.3
     if(body_length >= 16):
         FOOD_PENALTY = 0.8
     
     # TAIL_BOUNAUS : tendency to approach my tail
     TAIL_BOUNAUS = 1.1
-    if(body_length >= 12):
-        TAIL_BOUNAUS = 10
-    if(body_length >= 18):
-        TAIL_BOUNAUS = 15
+    #if(body_length >= 12):
+    #    TAIL_BOUNAUS = 10
+    #if(body_length >= 18):
+    #    TAIL_BOUNAUS = 15
     
     #TODO : Prevent your Battlesnake from moving out of bounds and colliding with itself(TODO 1 and 2)
-    if is_empty(my_head['x'] + 1,my_head['y'],board,my_health) == False:
+    if is_empty(my_head['x'] + 1,my_head['y'],board,my_health,body_length) == False:
         is_move_safe['right'] = False
-    if is_empty(my_head['x'] - 1,my_head['y'],board,my_health) == False:
+    if is_empty(my_head['x'] - 1,my_head['y'],board,my_health,body_length) == False:
         is_move_safe['left'] = False
-    if is_empty(my_head['x'],my_head['y'] + 1,board,my_health) == False:
+    if is_empty(my_head['x'],my_head['y'] + 1,board,my_health,body_length) == False:
         is_move_safe['up'] = False    
-    if is_empty(my_head['x'],my_head['y'] - 1,board,my_health) == False:
+    if is_empty(my_head['x'],my_head['y'] - 1,board,my_health,body_length) == False:
         is_move_safe['down'] = False
 
     # Are there any safe moves left?
@@ -136,7 +136,6 @@ def move(game_state: typing.Dict) -> typing.Dict:
     else:   #when snake aproach foods
         min_food = {"x": 0, "y": 0}
         min_distance = 12
-        TAIL_BOUNAUS = 2
         # set min_food and min_disatance
         for food in foods: 
             distance = abs(my_head['x'] - food['x']) + abs(my_head['y'] - food['y'])
@@ -152,6 +151,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
         else:
             food_points["down"] += (my_head['y'] - min_food['y']) * (health_level - my_health)
 
+    # TODO : Approach my tail
     if my_tail['y'] > my_head['y']:
         tail_points['up'] = TAIL_BOUNAUS
     elif my_tail['y'] < my_head['y']:
@@ -182,7 +182,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
     return {"move": next_move}
 
 def count_reachble_ways(next_x,next_y,depth,board,board_copy,my_health,body_length,my_body):
-    if is_empty(next_x,next_y,board,my_health) == False or board_copy[next_x][next_y] == -2:
+    if is_empty(next_x,next_y,board,my_health,body_length) == False or board_copy[next_x][next_y] == -2:
         return depth
     else:
         board_copy[next_x][next_y] = -2
@@ -209,10 +209,10 @@ def is_food(x,y,board):
     return False
 
 # return True if board[x][y] is empty(0,-1,3)
-def is_empty(x,y,board,my_health):
+def is_empty(x,y,board,my_health,body_length):
     if x < 0 or y < 0 or x >= 6 or y >= 6:
         return False
-    if board[x][y] == 0 or board[x][y] == -1 or (board[x][y] == 3 and  my_health < 99 ):   #empty,food,tail
+    if board[x][y] == 0 or board[x][y] == -1 or (board[x][y] == 3 and  my_health < 99 and body_length > 3):   #empty,food,tail
         return True
     else:
         return False
