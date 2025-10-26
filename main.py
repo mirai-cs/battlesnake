@@ -12,6 +12,7 @@
 
 import os
 from tarfile import NUL
+from turtle import distance
 import typing
 import copy
 
@@ -112,13 +113,26 @@ class Evaluator:
         self.board = board
         self.my_snake = my_snake
         self.grid_copy = copy.deepcopy(board.grid)
+        self.grid_copy_fill = None
         self.food_candidates = [
             {'id':0,'move':None,'distant':0,'max_depth':0},
             {'id':1,'move':None,'distant':0,'max_depth':0},
             {'id':2,'move':None,'distant':0,'max_depth':0}
         ]
         self.MAX_DEPTH = 12
+        if my_snake.length >= 12:
+            self.MAX_DEPTH = 13
+        if my_snake.length >= 20:
+            self.MAX_DEPTH = 18
+        if my_snake.length >= 25:
+            self.MAX_DEPTH = my_snake.length
+
         self.food_counts = {"up": 3, "down": 3, "left": 3, "right": 3}
+        self.explored_counts = {"up": 0, "down": 0, "left": 0, "right": 0}
+        self.APPROACH_SAFE_SCOPE = 0
+        if my_snake.length >= 20:
+            self.APPROACH_SAFE_SCOPE = my_snake.length / 10
+        
 
     def get_safe_moves(self):
         is_move_safe = {"up": True, "down": True, "left": True, "right": True}
@@ -135,63 +149,39 @@ class Evaluator:
             if isSafe:
                 safe_moves.append(move)
         return safe_moves
-    
-    def asess_food_points_avoid(self):
-        food_points = {"up": 1, "down": 1, "left": 1, "right": 1}
-        FOOD_PENALTY = -1
-        if self.my_snake.length >= 12:
-            FOOD_PENALTY = 0.2
+
+    def asess_tail_distances(self):
+        tail_distances = {"up": 0, "down": 0, "left": 0, "right": 0}
+        vectors = {"up": [0,1], "down": [0,-1], "left": [-1,0], "right": [1,0]}
+
+        my_length = self.my_snake.length
+        next_my_tail_x = self.my_snake.body[my_length - 2]['x']
+        next_my_tail_y = self.my_snake.body[my_length - 2]['y']
         my_head_x = self.my_snake.head['x']
         my_head_y = self.my_snake.head['y']
 
-        if self.board.is_food(my_head_x + 1,my_head_y):
-            food_points['right'] = FOOD_PENALTY
-        if self.board.is_food(my_head_x - 1,my_head_y):
-            food_points['left'] = FOOD_PENALTY
-        if self.board.is_food(my_head_x,my_head_y + 1):
-            food_points['up'] = FOOD_PENALTY
-        if self.board.is_food(my_head_x,my_head_y - 1):
-            food_points['down'] = FOOD_PENALTY    
-        return food_points  
+        for move in ["up","down","left","right"]:
+            distance = abs(my_head_x + vectors[move][0] - next_my_tail_x) + abs(my_head_y + vectors[move][1] - next_my_tail_y)
+            if distance <= 4:
+                tail_distances[move] = distance - 1
+            else:
+                tail_distances[move] = 4
+        return tail_distances
     
-    def asess_food_points_approach(self):
-        food_points = {"up": 1, "down": 1, "left": 1, "right": 1}
-        closest_food = self.board.get_closest_food()
-        my_head_x = self.my_snake.head['x']
-        my_head_y = self.my_snake.head['y']
-        HEALTH_LEVEL = 15
-        if closest_food['x'] > my_head_x:
-            food_points["right"] = (closest_food['x'] - my_head_x) * (HEALTH_LEVEL - self.my_snake.health)
-        else:
-            food_points["left"] += (my_head_x - closest_food['x']) * (HEALTH_LEVEL - self.my_snake.health)
-        if closest_food['y'] > my_head_y:
-            food_points["up"] += (closest_food['y'] - my_head_y) * (HEALTH_LEVEL - self.my_snake.health)
-        else:
-            food_points["down"] += (my_head_y - closest_food['y']) * (HEALTH_LEVEL - self.my_snake.health)
-        return food_points
-
-    def asess_tail_points(self):
-        TAIL_BOUNAUS = 1.5
-        tail_points = {"up": 1, "down": 1, "left": 1, "right": 1}
-        my_tail_x = self.my_snake.tail['x']
-        my_tail_y = self.my_snake.tail['y']
-        my_head_x = self.my_snake.head['x']
-        my_head_y = self.my_snake.head['y']
-        if my_tail_y > my_head_y:
-            tail_points['up'] = TAIL_BOUNAUS
-        elif my_tail_y < my_head_y:
-            tail_points['down'] = TAIL_BOUNAUS
-        if my_tail_x > my_head_x:
-            tail_points['right'] = TAIL_BOUNAUS
-        elif my_tail_x < my_head_x:
-            tail_points['left'] = TAIL_BOUNAUS
-        return tail_points
+    def count_explored(self):
+        explored_count = 0
+        for x in range(self.board.width):
+            for y in range(self.board.height):
+                if self.grid_copy_fill[x][y] == EXPLORED:
+                    explored_count += 1
+        return explored_count
             
     def asess_reachble_counts(self):
         reachble_counts = {"up": 0, "down": 0, "left": 0, "right": 0}
         for move in ["up", "down", "left", "right"]:
             current_x,current_y = self.my_snake.head['x'],self.my_snake.head['y']
             next_x,next_y = current_x,current_y
+            self.grid_copy_fill = copy.deepcopy(self.board.grid)
             if move == 'up':
                 next_y += 1
             elif move == 'down':
@@ -206,7 +196,14 @@ class Evaluator:
             if self.board.is_food(current_x,current_y) == True:
                 food_count = 1
                 tail_stop = True
-            reachble_counts[move] = self._count_reachble_ways(next_x,next_y,first_depth,move,food_count,tail_stop)
+                food_id = self.board.get_food_id(current_x,current_y)
+                self.food_candidates[food_id]['move'] = move
+                self.food_candidates[food_id]['distant'] = 1
+                reachble_counts[move] = self._count_reachble_ways(next_x,next_y,first_depth,move,food_count,tail_stop)
+                self.food_candidates[food_id]['max_depth'] = reachble_counts[move]
+            else:
+                reachble_counts[move] = self._count_reachble_ways(next_x,next_y,first_depth,move,food_count,tail_stop)
+            self.explored_counts[move] = self.count_explored()
         return reachble_counts
 
     def _count_reachble_ways(self,current_x,current_y,depth,first_move,food_count,tail_stop):
@@ -217,6 +214,7 @@ class Evaluator:
         max_depth = depth
         current_cell = self.grid_copy[current_x][current_y]
         self.grid_copy[current_x][current_y] = EXPLORED
+        self.grid_copy_fill[current_x][current_y] = EXPLORED
         tail_index = self.my_snake.length + food_count - depth - 2
         tail_x,tail_y = None,None
 
@@ -242,12 +240,10 @@ class Evaluator:
             
         if next_tail_stop == True and next_food_count == 1:  #if self.board.grid[current_x][current_y] == FOOD:
             food_id = self.board.get_food_id(current_x,current_y)
-            for food_candidate in self.food_candidates:
-                if food_candidate['id'] == food_id and self.my_snake.health - food_distant > 1 and food_candidate['distant'] <= food_distant:
-                    self.food_candidates[food_id]['move'] = first_move
-                    self.food_candidates[food_id]['distant'] = food_distant
-                    self.food_candidates[food_id]['max_depth'] = max_depth
-
+            if self.my_snake.health - food_distant > self.APPROACH_SAFE_SCOPE and max_depth == self.MAX_DEPTH and self.food_candidates[food_id]['distant'] <= food_distant and self.food_candidates[food_id]['distant'] < (self.MAX_DEPTH / 2):
+                self.food_candidates[food_id]['move'] = first_move
+                self.food_candidates[food_id]['distant'] = food_distant
+                self.food_candidates[food_id]['max_depth'] = max_depth                    
         self.grid_copy[current_x][current_y] = current_cell
         if tail_index >= 0 and tail_stop == False:
             self.grid_copy[tail_x][tail_y] = tail_cell
@@ -280,44 +276,60 @@ def move(game_state: typing.Dict) -> typing.Dict:
         return {"move": next_move}
 
 def choose_best_move(my_snake,evaluater):
-    HEALTH_LEVEL = max(12,my_snake.length * 0.75)
+    HEALTH_LEVEL = max(12,my_snake.length)
+    MAX_DEPTH = 12
+    if my_snake.length >= 12:
+        MAX_DEPTH = 13
+    if my_snake.length >= 20:
+        MAX_DEPTH = 18
+    if my_snake.length >= 25:
+        MAX_DEPTH = my_snake.length
+    TAIL_W = 1
+    FOOD_W = 10
+    if my_snake.length > 20:
+        TAIL_W = 5
     #W_F,W_R,W_T = 1,1,1
     safe_moves = evaluater.get_safe_moves()
-    best_move = None
-    reachble_counts = evaluater.asess_reachble_counts()
-    move_scores = {"up": 0, "down": 0, "left": 0, "right": 0}
-    #tail_points = {"up": 0, "down": 0, "left": 0, "right": 0}
-
-    if my_snake.health > HEALTH_LEVEL:
-        #food_points = evaluater.asess_food_points_avoid()
-        food_counts = evaluater.food_counts
-        #tail_points = evaluater.asess_tail_points()
-        for move in safe_moves:
-            move_scores[move] = reachble_counts[move] - food_counts[move]
-            best_move = max(safe_moves, key=lambda move: move_scores[move])
-        print_scores(reachble_counts,food_counts,move_scores)
-    else:
-        print(reachble_counts)
-        max_depth = 0
-        food_candidates = evaluater.food_candidates
-        for food_candidate in food_candidates:
-            print(food_candidate)
-            if food_candidate['move'] != None and food_candidate['max_depth'] > max_depth:
-                best_move = food_candidate['move']
-                max_depth = food_candidate['max_depth']
-        if best_move == None:
-            best_move = max(safe_moves, key=lambda move: reachble_counts[move])
-        #move_scores[move] = W_F*food_points[move] + W_R*reachble_counts[move] + W_T*tail_points[move]
-
     if len(safe_moves) == 0:
         return None
     
+    super_safe_moves = []
+    best_move = None
+    reachble_counts = evaluater.asess_reachble_counts()
+    move_scores = {"up": 0, "down": 0, "left": 0, "right": 0}
+    food_counts = evaluater.food_counts
+    explored_counts = evaluater.explored_counts
+    tail_distances = evaluater.asess_tail_distances()
+
+    if my_snake.health > HEALTH_LEVEL:
+        for move in safe_moves:
+            if reachble_counts[move] == MAX_DEPTH:
+                super_safe_moves.append(move)
+                move_scores[move] = explored_counts[move] + (3 - food_counts[move]) * FOOD_W + tail_distances[move] * TAIL_W
+        if len(super_safe_moves) == 0:
+            move_scores = reachble_counts
+        best_move = max(safe_moves, key=lambda move: move_scores[move])
+        print_scores(reachble_counts,food_counts,explored_counts,tail_distances,move_scores)
+    else:
+        food_candidates = evaluater.food_candidates
+        move_scores_sum = 0
+        for food_candidate in food_candidates:
+            print(food_candidate)
+            move = food_candidate['move']
+            if move != None and reachble_counts[move] == MAX_DEPTH:
+                move_scores[move] = (4 - food_counts[move])*10 + 4 - tail_distances[move]
+                move_scores_sum += move_scores[move]
+        best_move = max(safe_moves, key=lambda move: move_scores[move])
+        print_scores(reachble_counts,food_counts,explored_counts,tail_distances,move_scores)
+        if move_scores_sum == 0:
+            best_move = max(safe_moves, key=lambda move: reachble_counts[move])
     return best_move
 
-def print_scores(reachble_counts,food_counts,move_scores):
+def print_scores(reachble_counts,food_counts,explored_counts,tail_distances,move_scores):
     print(f"reachble count:\n{reachble_counts}")
     print(f"food counts:\n{food_counts}")
-    #print(f"tail points:\n{tail_points}")
+    print(f"explored counts:\n{explored_counts}")
+    print(f"tail distances:\n{tail_distances}")
     print(f"move scores:\n{move_scores}")
 
 # Start server when `python main.py` is run
