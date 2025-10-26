@@ -106,6 +106,7 @@ class Evaluator:
         self.board = board
         self.my_snake = my_snake
         self.grid_copy = copy.deepcopy(board.grid)
+        self.MAX_DEPTH = 12
 
     def get_safe_moves(self):
         is_move_safe = {"up": True, "down": True, "left": True, "right": True}
@@ -175,7 +176,8 @@ class Evaluator:
     def asess_reachble_counts(self):
         reachble_counts = {"up": 0, "down": 0, "left": 0, "right": 0}
         for move in ["up", "down", "left", "right"]:
-            next_x,next_y = self.my_snake.head['x'],self.my_snake.head['y']
+            current_x,current_y = self.my_snake.head['x'],self.my_snake.head['y']
+            next_x,next_y = current_x,current_y
             if move == 'up':
                 next_y += 1
             elif move == 'down':
@@ -185,41 +187,56 @@ class Evaluator:
             elif move == 'right':
                 next_x += 1
             current_depth = 0
-            reachble_counts[move] = self._count_reachble_ways(next_x,next_y,current_depth)
+            tail_stop = False
+            food_count = 0
+            if self.board.grid[current_x][current_y] == FOOD:
+                tail_stop = True
+                food_count += 1
+            reachble_counts[move] = self._count_reachble_ways(next_x,next_y,current_depth,move,food_count,tail_stop)
         return reachble_counts
 
-    def _count_reachble_ways(self,next_x,next_y,depth):
-        if self.is_empty(next_x,next_y) == False or self.grid_copy[next_x][next_y] == EXPLORED:
+    def _count_reachble_ways(self,current_x,current_y,depth,first_move,food_count,tail_stop):
+        if self.is_empty(current_x,current_y,tail_stop) == False or self.grid_copy[current_x][current_y] == EXPLORED:
             return depth
+        
         max_depth = depth
-        self.grid_copy[next_x][next_y] = EXPLORED
-        tail_index = self.my_snake.length - depth - 1
+        current_cell = self.grid_copy[current_x][current_y]
+        self.grid_copy[current_x][current_y] = EXPLORED
+        tail_index = self.my_snake.length + food_count - depth - 2
         tail_x,tail_y = None,None
 
-        if tail_index >= 0:
+        tail_cell = None
+        if tail_index >= 0 and tail_stop == False:
             tail_x = self.my_snake.body[tail_index]['x']
             tail_y = self.my_snake.body[tail_index]['y']
-            self.grid_copy[tail_x][tail_y] = SPACE
+            tail_cell = self.grid_copy[tail_x][tail_y]
+            self.grid_copy[tail_x][tail_y] = MY_TAIL
+        
+        next_food_count = food_count
+        next_tail_stop = False
+        if self.board.grid[current_x][current_y] == FOOD:
+            next_food_count += 1
+            next_tail_stop = True
 
-        MAX_DEPTH = 12
-        if depth < MAX_DEPTH:
-            max_depth = max(self._count_reachble_ways(next_x + 1,next_y,depth + 1),
-                            self._count_reachble_ways(next_x - 1,next_y,depth + 1), 
-                            self._count_reachble_ways(next_x,next_y + 1,depth + 1),
-                            self._count_reachble_ways(next_x,next_y - 1,depth + 1)) 
-        self.grid_copy[next_x][next_y] = self.board.grid[next_x][next_y]
-        if tail_index >= 0:
-            self.grid_copy[tail_x][tail_y] = self.board.grid[tail_x][tail_y]
+        if depth < self.MAX_DEPTH:
+            max_depth = max(self._count_reachble_ways(current_x + 1,current_y,depth + 1,first_move,next_food_count,next_tail_stop),
+                            self._count_reachble_ways(current_x - 1,current_y,depth + 1,first_move,next_food_count,next_tail_stop), 
+                            self._count_reachble_ways(current_x,current_y + 1,depth + 1,first_move,next_food_count,next_tail_stop),
+                            self._count_reachble_ways(current_x,current_y - 1,depth + 1,first_move,next_food_count,next_tail_stop)) 
+            
+        self.grid_copy[current_x][current_y] = current_cell
+        if tail_index >= 0 and tail_stop == False:
+            self.grid_copy[tail_x][tail_y] = tail_cell
         return max_depth
     
-    def is_empty(self,x,y):
+    def is_empty(self,x,y,tail_stop):
         if x < 0 or y < 0 or x >= self.board.width or y >= self.board.height:
             return False
-        if self.grid_copy[x][y] == SPACE or self.grid_copy[x][y] == FOOD or (self.grid_copy[x][y] == MY_TAIL and  self.my_snake.health < MAX_HEALTH and self.board.turn > 3):   #empty,food,tail
+        if self.grid_copy[x][y] == SPACE or self.grid_copy[x][y] == FOOD or (self.grid_copy[x][y] == MY_TAIL and tail_stop == False and self.board.turn > 3):   #empty,food,tail
             return True
         else:
             return False   
-
+        
 # move is called on every turn and returns your next move
 # Valid moves are "up", "down", "left", or "right"
 # See https://docs.battlesnake.com/api/example-move for available data
