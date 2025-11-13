@@ -1,16 +1,6 @@
-# Welcome to
-# __________         __    __  .__                               __
-# \______   \_____ _/  |__/  |_|  |   ____   ______ ____ _____  |  | __ ____
-#  |    |  _/\__  \\   __\   __\  | _/ __ \ /  ___//    \\__  \ |  |/ // __ \
-#  |    |   \ / __ \|  |  |  | |  |_\  ___/ \___ \|   |  \/ __ \|    <\  ___/
-#  |________/(______/__|  |__| |____/\_____>______>___|__(______/__|__\\_____>
-#
-# This file can be a nice home for your Battlesnake logic and helper functions.
-#
-# To get you started we've included code to prevent your Battlesnake from moving backwards.
-# For more info see docs.battlesnake.com
+# Group14
+# Python 3.12.3
 
-import os
 import typing
 import copy
 
@@ -23,7 +13,7 @@ def info() -> typing.Dict:
     return {
         "apiversion": "1",
         "author": "",  # TODO: Your Battlesnake Username
-        "color": "#888888",  # TODO: Choose color
+        "color": "#4B89C8",  # TODO: Choose color
         "head": "default",  # TODO: Choose head
         "tail": "default",  # TODO: Choose tail
     }
@@ -100,7 +90,7 @@ class Evaluator:
         if self.my_snake.length >= 8:
             self.MAX_DEPTH = 9
         if self.my_snake.length >= 15:
-            self.MAX_DEPTH = 12
+            self.MAX_DEPTH = 11
         if self.my_snake.length >= 20:
             self.MAX_DEPTH = 13
         if self.my_snake.length >= 25:
@@ -304,9 +294,9 @@ def move(game_state: typing.Dict) -> typing.Dict:
     return {"move": next_move}
 
 def choose_best_move(my_snake,evaluater):
-    HEALTH_LEVEL = max(12,my_snake.length + 10)
+    HEALTH_LEVEL = max(12,my_snake.length + 5)
     if my_snake.length >= 30:
-        HEALTH_LEVEL = my_snake.length + 15
+        HEALTH_LEVEL = my_snake.length + 10
     MAX_DEPTH = evaluater.MAX_DEPTH
     TAIL_W = 1
     FOOD_W = 15
@@ -365,7 +355,7 @@ def choose_best_move(my_snake,evaluater):
         if my_snake.length >= 30:
             APPROACH_MARGIN = my_snake.length / 5
         MAX_DEPTH_MARGIN = 1
-        if my_snake.length >= 12:
+        if my_snake.length >= 20:
             MAX_DEPTH_MARGIN = 1.2
 
 
@@ -395,7 +385,7 @@ def choose_best_move(my_snake,evaluater):
         AVOID_LENGTH_LEVEL = 10
         if my_snake.length <= AVOID_LENGTH_LEVEL:
             for target_candidate in target_candidates:
-                print(target_candidate)
+                #print(target_candidate)
                 move = target_candidate['move']
                 distant = target_candidate['distant']
                 food_count = target_candidate['food_count']
@@ -422,7 +412,7 @@ def choose_best_move(my_snake,evaluater):
             for move in safe_moves:
                 if reachble_counts[move] >= MAX_DEPTH:
                     super_safe_moves.append(move)
-                    move_scores[move] = explored_counts[move] + (3 - food_counts[move]) * FOOD_W - tail_distances[move] * TAIL_W - direction_counts[move] * DIRECTION_W
+                    move_scores[move] = explored_counts[move] + (3 - food_counts[move]) * FOOD_W - direction_counts[move] * DIRECTION_W
             if len(super_safe_moves) == 0:
                 move_scores = reachble_counts
             best_move = max(safe_moves, key=lambda move: move_scores[move])
@@ -440,6 +430,6 @@ def print_scores(reachble_counts,food_counts,explored_counts,tail_distances,dire
 
 # Start server when `python main.py` is run
 if __name__ == "__main__":
-    os.system('cls')
+    #os.system('cls')
     from server import run_server
     run_server({"info": info, "start": start, "move": move, "end": end})
