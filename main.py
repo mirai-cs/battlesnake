@@ -300,14 +300,13 @@ def move(game_state: typing.Dict) -> typing.Dict:
     if next_move == None:
         print(f"MOVE {game_state['turn']}: {next_move}\n")
         return {"move": "down"}
-    else:
-        print(f"MOVE {game_state['turn']}: {next_move}\n")
-        return {"move": next_move}
+    print(f"MOVE {game_state['turn']}: {next_move}\n")
+    return {"move": next_move}
 
 def choose_best_move(my_snake,evaluater):
-    HEALTH_LEVEL = max(12,my_snake.length + 3)
+    HEALTH_LEVEL = max(12,my_snake.length + 10)
     if my_snake.length >= 30:
-        HEALTH_LEVEL = my_snake.length + 10
+        HEALTH_LEVEL = my_snake.length + 15
     MAX_DEPTH = evaluater.MAX_DEPTH
     TAIL_W = 1
     FOOD_W = 15
