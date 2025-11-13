@@ -341,7 +341,7 @@ def choose_best_move(my_snake,evaluater):
             move_scores = reachble_counts
 
         best_move = max(safe_moves, key=lambda move: move_scores[move])
-        print_scores(reachble_counts,food_counts,explored_counts,tail_distances,direction_counts,move_scores)
+        #print_scores(reachble_counts,food_counts,explored_counts,tail_distances,direction_counts,move_scores)
     else:
         food_candidates = evaluater.get_food_candidates()
         best_food_count = 3
@@ -395,7 +395,7 @@ def choose_best_move(my_snake,evaluater):
                     best_move = move
         else:
             for target_candidate in target_candidates:
-                print(target_candidate)
+                #print(target_candidate)
                 move = target_candidate['move']
                 distant = target_candidate['distant']
                 space = explored_counts[move] 
@@ -416,7 +416,7 @@ def choose_best_move(my_snake,evaluater):
             if len(super_safe_moves) == 0:
                 move_scores = reachble_counts
             best_move = max(safe_moves, key=lambda move: move_scores[move])
-        print_scores(reachble_counts,food_counts,explored_counts,tail_distances,direction_counts,move_scores)
+        #print_scores(reachble_counts,food_counts,explored_counts,tail_distances,direction_counts,move_scores)
     return best_move
 
 def print_scores(reachble_counts,food_counts,explored_counts,tail_distances,direction_counts,move_scores):
