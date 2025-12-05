@@ -1,8 +1,11 @@
 # Group14
 # Python 3.12.3
 
+from tabnanny import check
+from turtle import distance
 import typing
 import copy
+from enum import Enum
 
 # info is called when you create your Battlesnake on play.battlesnake.com
 # and controls your Battlesnake's appearance
@@ -27,54 +30,81 @@ def end(game_state: typing.Dict):
     print("GAME OVER\n")
 
 # Constant values
-SPACE = 0
-FOOD = -1
-EXPLORED = -2
-MY_HEAD = 1
-MY_BODY = 2
-MY_TAIL = 3
+
 MAX_HEALTH = 100
+class GridState(Enum):
+    SPACE = 0
+    FOOD = -1
+    EXPLORED = -2
+    MY_HEAD = 1
+    MY_BODY = 2
+    MY_TAIL = 3
+    ENEMY_HEAD = 11
+    ENEMY_BODY = 12
+    ENEMY_TAIL = 13
 
 class Snake:
-    def __init__(self,game_state,snake_name):
-        self.body = game_state[snake_name]["body"]
-        self.length = game_state[snake_name]["length"]
-        self.health =  game_state[snake_name]["health"]
+    def __init__(self,game_state,snake_id):
+        snakes = game_state['board']['snakes']
+        if len(snakes) < snake_id:
+            return
+        self.body = snakes[snake_id]["body"]
+        self.length = snakes[snake_id]["length"]
+        self.health =  snakes[snake_id]["health"]
         self.head = self.body[0]
         self.neck = self.body[1]
         self.tail = self.body[-1]
 
 class Board:
-    def __init__(self,game_state,my_snake):
+    def __init__(self,game_state,my_snake,enemy_snake):
         self.width = game_state['board']['width']
         self.height = game_state['board']['height']
         self.foods = game_state["board"]["food"]
         self.turn = game_state['turn']
-        self.grid = [[0 for j in range(self.width)] for i in range(self.height)]
+        self.grid = [[GridState.SPACE for j in range(self.width)] for i in range(self.height)]
         self.my_snake = my_snake
+        self.enemy_snake = enemy_snake
         self.grid_copy = copy.deepcopy(self.grid)
         self._init_grid()
 
     def _init_grid(self):
         for food in self.foods:
-            self.grid[food['x']][food['y']] = FOOD
-        self.grid[self.my_snake.head['x']][self.my_snake.head['y']] = MY_HEAD
-        self.grid[self.my_snake.tail['x']][self.my_snake.tail['y']] = MY_TAIL
+            self.grid[food['x']][food['y']] = GridState.FOOD
+        self.grid[self.my_snake.head['x']][self.my_snake.head['y']] = GridState.MY_HEAD
+        self.grid[self.my_snake.tail['x']][self.my_snake.tail['y']] = GridState.MY_TAIL
+        self.grid[self.enemy_snake.head['x']][self.enemy_snake.head['y']] = GridState.ENEMY_HEAD
+        self.grid[self.enemy_snake.tail['x']][self.enemy_snake.tail['y']] = GridState.ENEMY_TAIL
         for i in range(1,self.my_snake.length - 1):
-            self.grid[self.my_snake.body[i]['x']][self.my_snake.body[i]['y']] = MY_BODY
+            self.grid[self.my_snake.body[i]['x']][self.my_snake.body[i]['y']] = GridState.MY_BODY
 
-    def is_empty(self,x,y):
-        if x < 0 or y < 0 or x >= self.width or y >= self.height:
+        for i in range(1,self.enemy_snake.length - 1):
+            self.grid[self.enemy_snake.body[i]['x']][self.enemy_snake.body[i]['y']] = GridState.ENEMY_BODY
+
+    def is_empty(self, x, y):
+        if not self.check_range(x, y):
             return False
-        if self.grid[x][y] == SPACE or self.grid[x][y] == FOOD or (self.grid[x][y] == MY_TAIL and  self.my_snake.health < MAX_HEALTH and self.turn > 3):
-            return True
-        else:
-            return False      
+
+        solo_safe = (self.grid[x][y] in [GridState.SPACE, GridState.FOOD] or
+                    (self.grid[x][y] == GridState.MY_TAIL and self.my_snake.health < MAX_HEALTH and self.turn > 3))
+
+        if not solo_safe:
+            return False
+
+        if self.my_snake.length <= self.enemy_snake.length:
+            for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+                nx, ny = x+dx, y+dy
+                if self.check_range(nx, ny) and self.grid[nx][ny] == GridState.ENEMY_HEAD:
+                    return False
+
+        return True   
         
+    def check_range(self,x,y):
+        return x >= 0 and y >= 0 and x < self.width and y < self.height
+    
     def is_food(self,x,y):
         if x < 0 or y < 0 or x >= self.width or y >= self.height:
             return False
-        if self.grid[x][y] == FOOD:
+        if self.grid[x][y] == GridState.FOOD:
             return True
         else:
             return False       
@@ -85,6 +115,7 @@ class Evaluator:
         self.my_snake = my_snake
         self.grid_copy = copy.deepcopy(board.grid)
         self.grid_copy_fill = None
+        self.grid_copy_fill_food = None
         self.food_candidates = []
         self.MAX_DEPTH = 8
         if self.my_snake.length >= 8:
@@ -182,10 +213,18 @@ class Evaluator:
         explored_count = 0
         for x in range(self.board.width):
             for y in range(self.board.height):
-                if self.grid_copy_fill[x][y] == EXPLORED:
+                if self.grid_copy_fill[x][y] == GridState.EXPLORED:
                     explored_count += 1
         return explored_count
             
+    def count_explored_food(self):
+        explored_count = 0
+        for x in range(self.board.width):
+            for y in range(self.board.height):
+                if self.grid_copy_fill_food[x][y] == GridState.EXPLORED:
+                    explored_count += 1
+        return explored_count
+    
     def asess_reachble_counts(self):
         reachble_counts = {"up": 0, "down": 0, "left": 0, "right": 0}
         for move in ["up", "down", "left", "right"]:
@@ -208,19 +247,19 @@ class Evaluator:
                 tail_stop = True
                 max_depth,total_food_count = self._count_reachble_ways(next_x,next_y,first_depth,move,food_count,tail_stop)
                 reachble_counts[move] = max_depth
-                self.food_candidates.appdnd({'move':move,'distant':0,'max_depth':max_depth,'food_count':total_food_count})          
+                self.food_candidates.appdnd({'move':move,'distant':0,'max_depth':max_depth,'food_count':total_food_count,'explored_count':self.count_explored()})          
             else:
                 reachble_counts[move],total_food_count = self._count_reachble_ways(next_x,next_y,first_depth,move,food_count,tail_stop)
             self.explored_counts[move] = self.count_explored()
         return reachble_counts
 
     def _count_reachble_ways(self,current_x,current_y,depth,first_move,food_count,tail_stop):
-        if self.is_empty(current_x,current_y,tail_stop) == False or self.grid_copy[current_x][current_y] == EXPLORED:
+        if self.is_empty(current_x,current_y,tail_stop) == False or self.grid_copy[current_x][current_y] == GridState.EXPLORED:
             return depth,food_count
         if depth == self.MAX_DEPTH:
             if self.food_counts[first_move] > food_count:
                 self.food_counts[first_move] = food_count
-            if self.grid_copy[current_x][current_y] != MY_TAIL:
+            if self.grid_copy[current_x][current_y] != GridState.MY_TAIL:
                 return depth + 2,food_count
             else:
                 return depth + 1,food_count
@@ -238,19 +277,24 @@ class Evaluator:
             current_tail_y = self.my_snake.body[tail_index+1]['y']
             next_tail_cell = self.grid_copy[next_tail_x][next_tail_y]
             current_tail_cell = self.grid_copy[current_tail_x][current_tail_y]
-            self.grid_copy[next_tail_x][next_tail_y] = MY_TAIL
-            self.grid_copy[current_tail_x][current_tail_y] = SPACE
+            self.grid_copy[next_tail_x][next_tail_y] = GridState.MY_TAIL
+            self.grid_copy[current_tail_x][current_tail_y] = GridState.SPACE
 
         current_cell = self.grid_copy[current_x][current_y]
-        self.grid_copy[current_x][current_y] = EXPLORED
-        self.grid_copy_fill[current_x][current_y] = EXPLORED
+        self.grid_copy[current_x][current_y] = GridState.EXPLORED
+        self.grid_copy_fill[current_x][current_y] = GridState.EXPLORED
+        if food_count >= 1:
+            self.grid_copy_fill_food[current_x][current_y] = GridState.EXPLORED
 
+        past_explored_count = None
         next_food_count = food_count
         next_tail_stop = False
-        if self.board.grid[current_x][current_y] == FOOD:
+        if self.board.grid[current_x][current_y] == GridState.FOOD:
             food_distant = depth
             next_food_count += 1
             next_tail_stop = True
+            if next_food_count == 1:
+                self.grid_copy_fill_food = copy.deepcopy(self.grid_copy)
 
         min_food_count = 3
 
@@ -264,8 +308,8 @@ class Evaluator:
                     max_depth = total_depth
                     min_food_count = total_food_count  
 
-                if next_tail_stop == True and next_food_count == 1 and total_depth >= self.MAX_DEPTH:  #if self.board.grid[current_x][current_y] == FOOD:
-                    self.food_candidates.append({'move':first_move,'distant':food_distant,'max_depth':max_depth,'food_count':total_food_count})               
+                if next_tail_stop == True and next_food_count == 1 and total_depth >= self.MAX_DEPTH:  #if self.board.grid[current_x][current_y] == GridState.FOOD:
+                    self.food_candidates.append({'move':first_move,'distant':food_distant,'max_depth':total_depth,'food_count':total_food_count,'explored_count':self.count_explored_food() - depth})               
                               
         self.grid_copy[current_x][current_y] = current_cell
         if tail_index >= 0:
@@ -276,7 +320,7 @@ class Evaluator:
     def is_empty(self,x,y,tail_stop):
         if x < 0 or y < 0 or x >= self.board.width or y >= self.board.height:
             return False
-        if self.grid_copy[x][y] == SPACE or self.grid_copy[x][y] == FOOD or (self.grid_copy[x][y] == MY_TAIL and tail_stop == False and self.board.turn > 3):   #empty,food,tail
+        if self.grid_copy[x][y] == GridState.SPACE or self.grid_copy[x][y] == GridState.FOOD or (self.grid_copy[x][y] == GridState.MY_TAIL and tail_stop == False and self.board.turn > 3):   #empty,food,tail
             return True
         else:
             return False   
@@ -285,8 +329,9 @@ class Evaluator:
 # Valid moves are "up", "down", "left", or "right"
 # See https://docs.battlesnake.com/api/example-move for available data
 def move(game_state: typing.Dict) -> typing.Dict:
-    my_snake = Snake(game_state,"you")
-    board = Board(game_state,my_snake)
+    my_snake = Snake(game_state,0)
+    enemy_snake = Snake(game_state,1)
+    board = Board(game_state,my_snake,enemy_snake)
     evaluator = Evaluator(board,my_snake)
 
     next_move = choose_best_move(my_snake,evaluator)
@@ -296,6 +341,8 @@ def move(game_state: typing.Dict) -> typing.Dict:
         return {"move": "down"}
     print(f"MOVE {game_state['turn']}: {next_move}\n")
     return {"move": next_move}
+
+
 
 def choose_best_move(my_snake,evaluater):
     HEALTH_LEVEL = max(12,my_snake.length + 5)
@@ -403,7 +450,7 @@ def choose_best_move(my_snake,evaluater):
                 #print(target_candidate)
                 move = target_candidate['move']
                 distant = target_candidate['distant']
-                space = explored_counts[move] 
+                space = target_candidate['explored_count'] / max(MAX_DEPTH - distant,1)
                 direction = direction_counts[move]
                 food_count = target_candidate['food_count']
                 if food_count < best_food_count or (distant >= best_food_distant and food_count <= best_food_count and  best_space <= space and best_direction >= direction):
