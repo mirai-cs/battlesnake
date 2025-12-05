@@ -359,7 +359,7 @@ def choose_best_move(my_snake,evaluater):
             APPROACH_MARGIN = 2
         if my_snake.length >= 30:
             APPROACH_MARGIN = my_snake.length / 10
-        MAX_DEPTH_MARGIN = 1
+        MAX_DEPTH_MARGIN = 1.2
         if my_snake.length >= 25:
             MAX_DEPTH_MARGIN = 1.1
 
