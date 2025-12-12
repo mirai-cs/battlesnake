@@ -175,6 +175,20 @@ class Evaluator:
                 safe_moves.append(move)
         return safe_moves
     
+    def get_closest_food(self):
+        my_snake_head_x = self.my_snake.head['x']
+        my_snake_head_y = self.my_snake.head['y']
+        min_food_distant = self.board.width + self.board.height - 2
+        best_food = None
+        food_distant = None
+        for food in self.board.foods:
+            food_distant = abs(my_snake_head_x - food['x']) + abs(my_snake_head_y - food['y'])
+            if min_food_distant <= food_distant:
+                min_food_distant = food_distant
+                best_food = food
+        return best_food
+
+    
     def asess_food_counts(self):
         return self.food_counts
     
@@ -365,17 +379,17 @@ def move(game_state: typing.Dict) -> typing.Dict:
 
 
 def choose_best_move(my_snake,evaluater,results):
-    HEALTH_LEVEL = max(12,my_snake.length + 5)
-    if my_snake.length >= 25:
-        HEALTH_LEVEL = my_snake.length + 10
-    MAX_DEPTH = evaluater.MAX_DEPTH
-    TAIL_W = 1
-    FOOD_W = 20
-    FOOD_NEXT_W = 0
-    if my_snake.length >= 25:
-        FOOD_NEXT_W = 3
-        TAIL_W = 1.5
-    DIRECTION_W = 2
+#    HEALTH_LEVEL = max(12,my_snake.length + 5)
+#    if my_snake.length >= 25:
+#        HEALTH_LEVEL = my_snake.length + 10
+#    MAX_DEPTH = evaluater.MAX_DEPTH
+#    TAIL_W = 1
+#    FOOD_W = 20
+#    FOOD_NEXT_W = 0
+#    if my_snake.length >= 25:
+#        FOOD_NEXT_W = 3
+#        TAIL_W = 1.5
+#    DIRECTION_W = 2
 
     safe_moves = evaluater.get_safe_moves()
     print("safe_moves:")
