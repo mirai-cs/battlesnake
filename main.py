@@ -132,6 +132,63 @@ class Evaluator:
         self.food_counts = {"up": 3, "down": 3, "left": 3, "right": 3}
         self.explored_counts = {"up": 0, "down": 0, "left": 0, "right": 0}
 
+# ------------------------------------------------------------------------
+    def get_stalking_score(self, move):
+        """
+        相手の「斜め後ろ（死角）」のみを狙うストーキング関数。
+        相手の進行方向を計算し、斜め前（衝突コース）を除外する。
+        """
+        # 1. 自分の次のヘッド位置を計算
+        next_my_head_x = self.my_snake.head['x']
+        next_my_head_y = self.my_snake.head['y']
+        
+        if move == "up": next_my_head_y += 1
+        elif move == "down": next_my_head_y -= 1
+        elif move == "left": next_my_head_x -= 1
+        elif move == "right": next_my_head_x += 1
+
+        # 2. 相手の進行方向ベクトルを特定 (Head - Neck)
+        enemy_head = self.enemy_snake.head
+        enemy_neck = self.enemy_snake.neck
+        
+        dx = enemy_head['x'] - enemy_neck['x']
+        dy = enemy_head['y'] - enemy_neck['y']
+
+        # 3. ターゲット座標の決定（斜め後ろ＝首の隣接マスとする）
+        # 進行方向に対して「後ろ」側の斜めのみをリストアップ
+        target_candidates = []
+
+        if dx == 1: # 相手は「右」を向いている
+            # 斜め後ろは「左上」と「左下」 -> つまり (Head.x - 1, Head.y ± 1)
+            target_candidates = [(enemy_head['x'] - 1, enemy_head['y'] + 1), 
+                                 (enemy_head['x'] - 1, enemy_head['y'] - 1)]
+        elif dx == -1: # 相手は「左」を向いている
+            # 斜め後ろは「右上」と「右下」 -> (Head.x + 1, Head.y ± 1)
+            target_candidates = [(enemy_head['x'] + 1, enemy_head['y'] + 1), 
+                                 (enemy_head['x'] + 1, enemy_head['y'] - 1)]
+        elif dy == 1: # 相手は「上」を向いている
+            # 斜め後ろは「左下」と「右下」 -> (Head.x ± 1, Head.y - 1)
+            target_candidates = [(enemy_head['x'] - 1, enemy_head['y'] - 1), 
+                                 (enemy_head['x'] + 1, enemy_head['y'] - 1)]
+        elif dy == -1: # 相手は「下」を向いている
+            # 斜め後ろは「左上」と「右上」 -> (Head.x ± 1, Head.y + 1)
+            target_candidates = [(enemy_head['x'] - 1, enemy_head['y'] + 1), 
+                                 (enemy_head['x'] + 1, enemy_head['y'] + 1)]
+
+        # 4. 最短距離の計算
+        min_distance = float('inf')
+
+        for tx, ty in target_candidates:
+            # マンハッタン距離
+            dist = abs(tx - next_my_head_x) + abs(ty - next_my_head_y)
+            if dist < min_distance:
+                min_distance = dist
+
+        # 距離が近いほど高スコア（ターゲットが遠すぎる場合は評価を下げる）
+        # +1 はゼロ除算防止
+        return 100.0 / (min_distance + 1)
+#------------------------------------------------------------------------------
+
     def get_food_next_counts(self):
         NEXT_FOOD_POINT = 2
         vectors = {"up": [0,1], "down": [0,-1], "left": [-1,0], "right": [1,0]}
@@ -425,6 +482,10 @@ def choose_best_move(my_snake,evaluater):
         TAIL_W = 1.5
     DIRECTION_W = 2
 
+    #-------------
+    STALKING_W = 50.0
+    #--------------
+
     # --- 安全な手の取得 ---
     safe_moves = evaluater.get_safe_moves()
     print("safe_moves:")
@@ -480,6 +541,13 @@ def choose_best_move(my_snake,evaluater):
 
             if next_distance < current_distance:
                     score += 50
+
+#------------------------------------------------------------------------
+        if my_snake.length > evaluater.enemy_snake.length:
+            # 死角のみを狙う関数を呼び出す
+            stalking_score = evaluater.get_stalking_score(move)
+            score += stalking_score * STALKING_W
+#------------------------------------------------------------------------
 
         move_scores[move] = score
 
