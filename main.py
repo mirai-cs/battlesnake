@@ -1,15 +1,10 @@
 # Group14
 # Python 3.12.3
 
-from hmac import new
-from tarfile import NUL
-from tkinter import Grid
 import typing
 import copy
 from enum import Enum
-import time
 import os
-import random
 
 
 # info is called when you create your Battlesnake on play.battlesnake.com
@@ -21,7 +16,7 @@ def info() -> typing.Dict:
     return {
         "apiversion": "1",
         "author": "",  # TODO: Your Battlesnake Username
-        "color": "#4B89C8",  # TODO: Choose color
+        "color": "#ff7f50",  # TODO: Choose color
         "head": "missile",  # TODO: Choose head
         "tail": "missile",  # TODO: Choose tail
     }
@@ -83,13 +78,17 @@ class Board:
 
         if not solo_safe:
             return False
+        return True  
 
-        if self.my_snake.length <= self.enemy_snake.length:
-            for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
-                nx, ny = x+dx, y+dy
-                if self.check_range(nx, ny) and self.grid[nx][ny] == GridState.ENEMY_HEAD:
-                    return False
-        return True   
+    def is_headon(self,x,y):
+        for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+            nx, ny = x+dx, y+dy
+            if self.check_range(nx, ny) and self.grid[nx][ny] == GridState.ENEMY_HEAD:
+                if self.my_snake.length <= self.enemy_snake.length:
+                    return Result.LOSE
+                else:
+                    return Result.WIN
+        return Result.SAFE
         
     def check_range(self,x,y):
         return x >= 0 and y >= 0 and x < self.width and y < self.height
@@ -103,36 +102,68 @@ class Board:
             return False       
     
 class Evaluator:
-    def __init__(self,board,my_snake):
+    def __init__(self,board,my_snake,enemy_snake):
         self.board = board
         self.my_snake = my_snake
+        self.enemy_snake = enemy_snake
         
     def get_safe_moves(self):
+        is_empty = {"U": True, "D": True, "L": True, "R": True}
+        is_headon = {"U": Result.SAFE, "D": Result.SAFE, "L": Result.SAFE, "R": Result.SAFE}
         is_move_safe = {"U": True, "D": True, "L": True, "R": True}
-        if self.board.is_empty(self.my_snake.head['x'] + 1,self.my_snake.head['y']) == False:
-            is_move_safe['R'] = False
-        if self.board.is_empty(self.my_snake.head['x'] - 1,self.my_snake.head['y']) == False:
-            is_move_safe['L'] = False
-        if self.board.is_empty(self.my_snake.head['x'],self.my_snake.head['y'] + 1) == False:
-            is_move_safe['U'] = False        
-        if self.board.is_empty(self.my_snake.head['x'],self.my_snake.head['y'] - 1) == False:
-            is_move_safe['D'] = False
-        safe_moves = []
+        my_snake_head_x = self.my_snake.head['x']
+        my_snake_head_y = self.my_snake.head['y']
+        is_empty['R'] = self.board.is_empty(my_snake_head_x + 1,my_snake_head_y)
+        is_empty['L'] = self.board.is_empty(my_snake_head_x - 1,my_snake_head_y)
+        is_empty['U'] = self.board.is_empty(my_snake_head_x,my_snake_head_y + 1)    
+        is_empty['D'] = self.board.is_empty(my_snake_head_x,my_snake_head_y - 1)
+        is_headon["R"] = self.board.is_headon(my_snake_head_x + 1,my_snake_head_y)
+        is_headon["L"] = self.board.is_headon(my_snake_head_x - 1,my_snake_head_y)
+        is_headon["U"] = self.board.is_headon(my_snake_head_x,my_snake_head_y + 1)
+        is_headon["D"] = self.board.is_headon(my_snake_head_x,my_snake_head_y - 1)
+        for d in ("U", "D", "L", "R"):
+            if is_headon[d] in (Result.WIN,Result.SAFE):
+                is_move_safe[d] = is_empty[d]
+            else:
+                is_move_safe[d] = False
+        safe_moves,headon_moves,headon_win_moves = [],[],[]
         for move, isSafe in is_move_safe.items():
             if isSafe:
                 safe_moves.append(move)
-        return safe_moves
+        for move , isHeadon in is_headon.items():
+            if is_empty[move] == True:
+                if isHeadon != Result.SAFE:
+                    headon_moves.append(move)
+                if isHeadon == Result.WIN:
+                    headon_win_moves.append(move)
+        print(safe_moves,headon_moves,headon_win_moves)
+        return safe_moves,headon_moves,headon_win_moves
+    
+    def get_balance_enemy(self):
+        x_average = 0
+        y_average = 0
+        for cell in self.enemy_snake.body:
+            x_average += cell['x']
+            y_average += cell['y']
+        x_average /= self.enemy_snake.length
+        y_average /= self.enemy_snake.length
+        return x_average,y_average
     
     def get_best_food(self):
         my_snake_head_x = self.my_snake.head['x']
         my_snake_head_y = self.my_snake.head['y']
+        enemy_ave_x,enemy_ave_y = self.get_balance_enemy()
         min_food_distant = self.board.width + self.board.height
+        max_food_enemy_distant = 0
         best_food = None
         food_distant = None
+        food_enemy_distant = None
         for food in self.board.foods:
             food_distant = abs(my_snake_head_x - food['x']) + abs(my_snake_head_y - food['y'])
-            if min_food_distant >= food_distant:
+            food_enemy_distant = abs(food['x'] - enemy_ave_x) + abs(food['y'] - enemy_ave_y)
+            if min_food_distant >= food_distant and max_food_enemy_distant <= food_enemy_distant:
                 min_food_distant = food_distant
+                max_food_enemy_distant = food_enemy_distant
                 best_food = food
         return best_food
     
@@ -152,14 +183,6 @@ class Evaluator:
             food_directions["D"] += FOOD_POINT   
         return food_directions
       
-    def is_empty(self,x,y,tail_stop):
-        if x < 0 or y < 0 or x >= self.board.width or y >= self.board.height:
-            return False
-        if self.grid_copy[x][y] == GridState.SPACE or self.grid_copy[x][y] == GridState.FOOD or (self.grid_copy[x][y] == GridState.MY_TAIL and tail_stop == False and self.board.turn > 3):   #empty,food,tail
-            return True
-        else:
-            return False   
-
 class GridState(Enum):
     SPACE = 0
     FOOD = -1
@@ -193,11 +216,12 @@ STRING_DIRS_CONVERSION = {
 
 class Stats:
     def __init__(self):
-        self.my_dead = False
-        self.enemy_dead = False
         self.my_move_sum = 0
         self.enemy_move_sum = 0
         self.node_count = 0
+        self.safe_count = 0
+        self.lose_count = 0
+        self.win_count = 0
 
 class Simulator:
     def __init__(self,board,my_snake,enemy_snake):
@@ -237,9 +261,16 @@ class Simulator:
     
     def dfs(self,depth,my_food_count,enemy_food_count,mx,my,ex,ey,my_tail_stop,enemy_tail_stop):
         if depth == self.MAX_DEPTH:
+            self.stats.safe_count += 1
             return        
         my_moves  = self.legal_moves(mx,my,my_tail_stop,enemy_tail_stop)
         enemy_moves = self.legal_moves(ex,ey,my_tail_stop,enemy_tail_stop)
+
+        if len(enemy_moves) == 0:
+            self.stats.win_count += 1
+            self.stats.safe_count += 1
+        if len(my_moves) == 0:
+            self.stats.lose_count += 1
 
         self.stats.my_move_sum  += len(my_moves)
         self.stats.enemy_move_sum += len(enemy_moves)
@@ -256,6 +287,11 @@ class Simulator:
                         enemy_food_count += 1
                     self.dfs(depth + 1,my_food_count,enemy_food_count,mnx,mny,enx,eny,my_ate,enemy_ate)
                     self.undo(changed,removed_my_tail,removed_enemy_tail)
+                elif my_dead == True:
+                    self.stats.lose_count += 1
+                elif my_dead == False and enemy_dead == True:
+                    self.stats.win_count += 1
+                    self.stats.safe_count += 1
 
     def is_empty(self, x, y, my_tail_stop, enemy_tail_stop):
         state = self.grid[x][y]
@@ -329,6 +365,7 @@ class Simulator:
     def pop_my_tail(self):
         tail_state = self.my_body.pop()
         return tail_state,tail_state['x'] , tail_state['y']
+    
     def pop_enemy_tail(self):
         tail_state = self.enemy_body.pop()
         return tail_state,tail_state['x'] , tail_state['y']
@@ -341,19 +378,25 @@ class Simulator:
         my_food_count = 0
         enemy_food_count = 0
         my_tail_stop,enemy_tail_stop = False,False
-        if self.grid[mx][my] == GridState.FOOD:
+        if self.my_health == MAX_HEALTH:
             my_food_count += 1
             my_tail_stop = True
-        if self.grid[ex][ey] == GridState.FOOD:
+        if self.enemy_health == MAX_HEALTH:
             enemy_food_count += 1
             enemy_tail_stop = True
         
         my_moves = self.legal_moves(mx,my,my_tail_stop,enemy_tail_stop)
         enemy_moves = self.legal_moves(ex,ey,my_tail_stop,enemy_tail_stop)
+
         
         for d, mnx, mny in my_moves:
             self.stats = Stats()
             self.stats.node_count   += 1
+            if len(enemy_moves) == 0:
+                self.stats.win_count += 1
+                self.stats.safe_count += 1
+            if len(my_moves) == 0:
+                self.stats.lose_count += 1
 
             for _, enx, eny in enemy_moves:
                 my_dead,enemy_dead = self.judge_death(depth,mnx,mny,enx,eny,my_food_count,enemy_food_count,my_tail_stop,enemy_tail_stop)
@@ -365,6 +408,12 @@ class Simulator:
                         enemy_food_count += 1
                     self.dfs(depth + 1,my_food_count,enemy_food_count,mnx,mny,enx,eny,my_ate,enemy_ate)
                     self.undo(changed,removed_my_tail,removed_enemy_tail)
+                elif my_dead == True:
+                    self.stats.lose_count += 1
+                elif my_dead == False and enemy_dead == True:
+                    self.stats.win_count += 1
+                    self.stats.safe_count += 1
+
             result[d] = copy.copy(self.stats)
         return result
 
@@ -386,46 +435,88 @@ def move(game_state: typing.Dict) -> typing.Dict:
     enemy_snake = Snake(enemy_raw)
 
     board = Board(game_state,my_snake,enemy_snake)
-    evaluator = Evaluator(board,my_snake)
+    evaluator = Evaluator(board,my_snake,enemy_snake)
     simulator = Simulator(board,my_snake,enemy_snake)
 
-    next_move = choose_best_move(board,evaluator,simulator)
+    next_move = choose_best_move(board,my_snake,enemy_snake,evaluator,simulator)
 
     if next_move == None:
         print(f"MOVE {game_state['turn']}: {next_move}\n")
-        return {"move": "down"}
+        return {"move": "right"}
     print(f"MOVE {game_state['turn']}: {next_move}\n")
     return {"move": next_move}
 
-def choose_best_move(board,evaluater,simulator):
-    FOOD_W = 200
-    safe_moves = evaluater.get_safe_moves()
+def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
+    INF = 10**12
+    W_SAFE = 1.0
+    W_WIN  = 5.0
+    W_LOSE = 5.0
+    W_SPACE = 100
+    HEALTH_LEBEL = 40
+    length_diff = my_snake.length - enemy_snake.length
+    if length_diff > 2:
+        if my_snake.health > HEALTH_LEBEL:
+            FOOD_W = 0
+        else:
+            FOOD_W = 100 * (MAX_HEALTH - my_snake.health)
+    else:
+        FOOD_W = 100 * (MAX_HEALTH - my_snake.health + length_diff)
+    if board.turn <= 30:
+        FOOD_W = 5000
+
+    safe_moves, headon_moves, headon_win_moves = evaluater.get_safe_moves()
     food_directions = evaluater.get_food_directions()
     result = simulator.evaluate_first_moves()
-    my_free = {}
-    enemy_free = {}
+
+    scores = {}
+
     for d, s in result.items():
-        if s.my_dead:
-            life = "LOSE"
-        elif s.enemy_dead:
-            life = "WIN"
+        if s.safe_count == 0:
+            scores[d] = -INF
+            continue
+
+        if d in headon_moves:
+            if d not in headon_win_moves:
+                scores[d] = -INF // 2
+            elif s.lose_count == 0:
+                scores[d] = INF
+            continue
+
+        survival_score = (
+            W_SAFE * s.safe_count
+            + W_WIN  * s.win_count
+            - W_LOSE * s.lose_count
+        )
+
+        if s.node_count > 0:
+            space_score = (s.my_move_sum - s.enemy_move_sum) / s.node_count
         else:
-            life = "SAFE"
+            space_score = 0
+        food_score =  food_directions.get(d, 0)
+        scores[d] = (
+            survival_score
+            + W_SPACE * space_score
+            + FOOD_W *food_score
+        )
+        print(d)
+        print("survival:",survival_score,"space:",W_SPACE * space_score,"food:",FOOD_W * food_score)
 
-        my_free[d] =  s.my_move_sum  
-        enemy_free[d]  = s.enemy_move_sum 
-    print("myfree, enemyfree :")
-    print(my_free, enemy_free)
-    print("safe_moves:")
-    print(safe_moves)
-    print("food_directions")
-    print(food_directions)
-    if len(safe_moves) > 0:
-        best_move = max(safe_moves, key=lambda move: my_free[move] - enemy_free[move] + food_directions[move] * FOOD_W)
-        return STRING_DIRS_CONVERSION[best_move]
+    if scores:
+        best_move = max(scores, key=scores.get)
+        if scores[best_move] < -INF // 4:
+            return STRING_DIRS_CONVERSION[best_move[-1]]
+        for d in scores:
+            print(d, scores[d], 
+            "safe", result[d].safe_count,
+            "win", result[d].win_count,
+            "lose", result[d].lose_count)
     else:
-        return None
+        if len(safe_moves) > 0:
+            return STRING_DIRS_CONVERSION[safe_moves[-1]]
+        else:
+            return STRING_DIRS_CONVERSION["R"]
 
+    return STRING_DIRS_CONVERSION[best_move]
 
 # Start server when `python main.py` is run
 if __name__ == "__main__":
