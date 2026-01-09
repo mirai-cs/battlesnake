@@ -79,7 +79,7 @@ class Board:
         if not solo_safe:
             return False
         return True  
-
+    
     def is_headon(self,x,y):
         for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
             nx, ny = x+dx, y+dy
@@ -139,6 +139,104 @@ class Evaluator:
         print(safe_moves,headon_moves,headon_win_moves)
         return safe_moves,headon_moves,headon_win_moves
     
+    def get_stalking_score(self, move):
+        """
+        相手の「斜め後ろ（死角）」のみを狙うストーキング関数。
+        相手の進行方向を計算し、斜め前（衝突コース）を除外する。
+        """
+        # 1. 自分の次のヘッド位置を計算
+        next_my_head_x = self.my_snake.head['x']
+        next_my_head_y = self.my_snake.head['y']
+        
+        if move == "up": next_my_head_y += 1
+        elif move == "down": next_my_head_y -= 1
+        elif move == "left": next_my_head_x -= 1
+        elif move == "right": next_my_head_x += 1
+
+        # 2. 相手の進行方向ベクトルを特定 (Head - Neck)
+        enemy_head = self.enemy_snake.head
+        enemy_neck = self.enemy_snake.neck
+        
+        dx = enemy_head['x'] - enemy_neck['x']
+        dy = enemy_head['y'] - enemy_neck['y']
+
+        # 3. ターゲット座標の決定（斜め後ろ＝首の隣接マスとする）
+        # 進行方向に対して「後ろ」側の斜めのみをリストアップ
+        target_candidates = []
+
+        if dx == 1: # 相手は「右」を向いている
+            # 斜め後ろは「左上」と「左下」 -> つまり (Head.x - 1, Head.y ± 1)
+            target_candidates = [(enemy_head['x'] - 1, enemy_head['y'] + 1), 
+                                 (enemy_head['x'] - 1, enemy_head['y'] - 1)]
+        elif dx == -1: # 相手は「左」を向いている
+            # 斜め後ろは「右上」と「右下」 -> (Head.x + 1, Head.y ± 1)
+            target_candidates = [(enemy_head['x'] + 1, enemy_head['y'] + 1), 
+                                 (enemy_head['x'] + 1, enemy_head['y'] - 1)]
+        elif dy == 1: # 相手は「上」を向いている
+            # 斜め後ろは「左下」と「右下」 -> (Head.x ± 1, Head.y - 1)
+            target_candidates = [(enemy_head['x'] - 1, enemy_head['y'] - 1), 
+                                 (enemy_head['x'] + 1, enemy_head['y'] - 1)]
+        elif dy == -1: # 相手は「下」を向いている
+            # 斜め後ろは「左上」と「右上」 -> (Head.x ± 1, Head.y + 1)
+            target_candidates = [(enemy_head['x'] - 1, enemy_head['y'] + 1), 
+                                 (enemy_head['x'] + 1, enemy_head['y'] + 1)]
+
+        # 4. 最短距離の計算
+        min_distance = float('inf')
+
+        for tx, ty in target_candidates:
+            # マンハッタン距離
+            dist = abs(tx - next_my_head_x) + abs(ty - next_my_head_y)
+            if dist < min_distance:
+                min_distance = dist
+
+        # 距離が近いほど高スコア（ターゲットが遠すぎる場合は評価を下げる）
+        # +1 はゼロ除算防止
+        return 100.0 / (min_distance + 1)
+
+
+    
+    #ここから追加（最もgood餌を取得する関数）
+    def get_best_food(self):
+        MY_DISTANCE_W = 2.0
+        ENEMY_DISTANCE_W = 3.0
+        WALL_DISTANCE_W = 3.0
+
+        #餌の位置を取得
+        foods = self.board.foods
+        #頭の位置を取得
+        my_head = self.my_snake.head
+        #aite no hebi no atama
+        enemy_head = self.enemy_snake.head
+
+        best_food = None
+        #minusの無限大を代入しておく
+        max_score = float('-inf')
+
+        board_width = self.board.width
+        board_height = self.board.height
+
+        #頭と餌の距離を計算 
+        for food in foods:
+            my_distance = abs(food['x'] - my_head['x']) + abs(food['y'] - my_head['y'])
+            enemy_distance = abs(food['x'] - enemy_head['x']) + abs(food['y'] - enemy_head['y'])
+
+            distance_from_x_wall = min(food['x'], board_width -1 -food['x'])
+            distance_from_y_wall = min(food['y'], board_height -1 -food['y'])
+            wall_score = distance_from_x_wall + distance_from_y_wall
+
+            score = 0
+
+            score -= my_distance * MY_DISTANCE_W
+            score += enemy_distance * ENEMY_DISTANCE_W
+            score += wall_score * WALL_DISTANCE_W
+
+            if score > max_score:
+                max_score = score
+                best_food = food 
+
+        return best_food  
+    
     def get_balance_enemy(self):
         x_average = 0
         y_average = 0
@@ -148,7 +246,7 @@ class Evaluator:
         x_average /= self.enemy_snake.length
         y_average /= self.enemy_snake.length
         return x_average,y_average
-    
+    """    
     def get_best_food(self):
         my_snake_head_x = self.my_snake.head['x']
         my_snake_head_y = self.my_snake.head['y']
@@ -166,7 +264,8 @@ class Evaluator:
                 max_food_enemy_distant = food_enemy_distant
                 best_food = food
         return best_food
-    
+    """
+
     def get_food_directions(self):
         FOOD_POINT = 1
         food_directions = {'U': 0, 'D' : 0, 'L' : 0, 'R' : 0}
@@ -452,6 +551,7 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
     W_WIN  = 5.0
     W_LOSE = 5.0
     W_SPACE = 100
+    STALKING_W = 50.0
     HEALTH_LEBEL = 40
     length_diff = my_snake.length - enemy_snake.length
     if length_diff > 2:
@@ -464,6 +564,7 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
     if board.turn <= 30:
         FOOD_W = 5000
 
+
     safe_moves, headon_moves, headon_win_moves = evaluater.get_safe_moves()
     food_directions = evaluater.get_food_directions()
     result = simulator.evaluate_first_moves()
@@ -471,6 +572,7 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
     scores = {}
 
     for d, s in result.items():
+        scores[d] = 0.0
         if s.safe_count == 0:
             scores[d] = -INF
             continue
@@ -481,6 +583,10 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
             elif s.lose_count == 0:
                 scores[d] = INF
             continue
+        if my_snake.length > evaluater.enemy_snake.length:
+            # 死角のみを狙う関数を呼び出す
+            stalking_score = evaluater.get_stalking_score(STRING_DIRS_CONVERSION[d])
+            scores[d] += stalking_score * STALKING_W
 
         survival_score = (
             W_SAFE * s.safe_count
