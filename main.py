@@ -1,6 +1,7 @@
 # Group14
 # Python 3.12.3
 
+from turtle import width
 import typing
 import copy
 from enum import Enum
@@ -321,6 +322,8 @@ class Stats:
         self.safe_count = 0
         self.lose_count = 0
         self.win_count = 0
+        self.my_space_danger = 0
+        self.enemy_space_danger = 0
 
 class Simulator:
     def __init__(self,board,my_snake,enemy_snake):
@@ -358,6 +361,22 @@ class Simulator:
                 moves.append((d, nx, ny))
         return moves
     
+    def get_space_score(self,x,y):
+        space_score = 0
+        if x in (0,self.width):
+            space_score += 3
+        elif x in (1,self.width - 1):
+            space_score += 2
+        elif x in (2,self.width - 2):
+            space_score += 1
+        if y in (0,self.width):
+            space_score += 3
+        elif y in (1,self.width - 1):
+            space_score += 2
+        elif y in (2,self.width - 2):
+            space_score += 1
+        return space_score
+        
     def dfs(self,depth,my_food_count,enemy_food_count,mx,my,ex,ey,my_tail_stop,enemy_tail_stop):
         if depth == self.MAX_DEPTH:
             self.stats.safe_count += 1
@@ -370,6 +389,9 @@ class Simulator:
             self.stats.safe_count += 1
         if len(my_moves) == 0:
             self.stats.lose_count += 1
+
+        self.stats.my_space_danger += self.get_space_score(mx,my)
+        self.stats.enemy_space_danger += self.get_space_score(ex,ey)
 
         self.stats.my_move_sum  += len(my_moves)
         self.stats.enemy_move_sum += len(enemy_moves)
@@ -487,7 +509,6 @@ class Simulator:
         my_moves = self.legal_moves(mx,my,my_tail_stop,enemy_tail_stop)
         enemy_moves = self.legal_moves(ex,ey,my_tail_stop,enemy_tail_stop)
 
-        
         for d, mnx, mny in my_moves:
             self.stats = Stats()
             self.stats.node_count   += 1
@@ -496,7 +517,8 @@ class Simulator:
                 self.stats.safe_count += 1
             if len(my_moves) == 0:
                 self.stats.lose_count += 1
-
+            self.stats.my_space_danger += self.get_space_score(mx,my)
+            self.stats.enemy_space_danger += self.get_space_score(ex,ey)
             for _, enx, eny in enemy_moves:
                 my_dead,enemy_dead = self.judge_death(depth,mnx,mny,enx,eny,my_food_count,enemy_food_count,my_tail_stop,enemy_tail_stop)
                 if not my_dead and not enemy_dead:
@@ -573,6 +595,13 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
 
     for d, s in result.items():
         scores[d] = 0.0
+        # 空間スコアの取得
+        my_space_score = s.my_space_danger / s.node_count
+        enemy_space_score = s.enemy_space_danger / s.node_count
+        print("my_space: ",my_space_score)
+        print("enemy_space: ",enemy_space_score)
+
+
         if s.safe_count == 0:
             scores[d] = -INF
             continue
@@ -593,6 +622,7 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
             + W_WIN  * s.win_count
             - W_LOSE * s.lose_count
         )
+
 
         if s.node_count > 0:
             space_score = (s.my_move_sum - s.enemy_move_sum) / s.node_count
