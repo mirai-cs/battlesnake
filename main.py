@@ -247,26 +247,7 @@ class Evaluator:
         x_average /= self.enemy_snake.length
         y_average /= self.enemy_snake.length
         return x_average,y_average
-    """    
-    def get_best_food(self):
-        my_snake_head_x = self.my_snake.head['x']
-        my_snake_head_y = self.my_snake.head['y']
-        enemy_ave_x,enemy_ave_y = self.get_balance_enemy()
-        min_food_distant = self.board.width + self.board.height
-        max_food_enemy_distant = 0
-        best_food = None
-        food_distant = None
-        food_enemy_distant = None
-        for food in self.board.foods:
-            food_distant = abs(my_snake_head_x - food['x']) + abs(my_snake_head_y - food['y'])
-            food_enemy_distant = abs(food['x'] - enemy_ave_x) + abs(food['y'] - enemy_ave_y)
-            if min_food_distant >= food_distant and max_food_enemy_distant <= food_enemy_distant:
-                min_food_distant = food_distant
-                max_food_enemy_distant = food_enemy_distant
-                best_food = food
-        return best_food
-    """
-
+    
     def get_food_directions(self):
         FOOD_POINT = 1
         food_directions = {'U': 0, 'D' : 0, 'L' : 0, 'R' : 0}
@@ -534,7 +515,6 @@ class Simulator:
                 elif my_dead == False and enemy_dead == True:
                     self.stats.win_count += 1
                     self.stats.safe_count += 1
-
             result[d] = copy.copy(self.stats)
         return result
 
@@ -582,7 +562,7 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
         else:
             FOOD_W = 100 * (MAX_HEALTH - my_snake.health)
     else:
-        FOOD_W = 100 * (MAX_HEALTH - my_snake.health + length_diff)
+        FOOD_W = 100 * (MAX_HEALTH - my_snake.health - length_diff)
     if board.turn <= 30:
         FOOD_W = 5000
 
@@ -598,20 +578,14 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
         # 空間スコアの取得
         my_space_score = s.my_space_danger / s.node_count
         enemy_space_score = s.enemy_space_danger / s.node_count
-        print("my_space: ",my_space_score)
-        print("enemy_space: ",enemy_space_score)
-
-
         if s.safe_count == 0:
             scores[d] = -INF
-            continue
 
         if d in headon_moves:
             if d not in headon_win_moves:
                 scores[d] = -INF // 2
             elif s.lose_count == 0:
                 scores[d] = INF
-            continue
         if my_snake.length > evaluater.enemy_snake.length:
             # 死角のみを狙う関数を呼び出す
             stalking_score = evaluater.get_stalking_score(STRING_DIRS_CONVERSION[d])
@@ -623,19 +597,22 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
             - W_LOSE * s.lose_count
         )
 
-
         if s.node_count > 0:
             space_score = (s.my_move_sum - s.enemy_move_sum) / s.node_count
         else:
             space_score = 0
         food_score =  food_directions.get(d, 0)
-        scores[d] = (
+        scores[d] += (
             survival_score
             + W_SPACE * space_score
             + FOOD_W *food_score
         )
-        print(d)
+
+        print("direction : ",d)
         print("survival:",survival_score,"space:",W_SPACE * space_score,"food:",FOOD_W * food_score)
+        print("my_space: ",my_space_score)
+        print("enemy_space: ",enemy_space_score)
+
 
     if scores:
         best_move = max(scores, key=scores.get)
