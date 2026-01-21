@@ -1,11 +1,13 @@
 # Group14
 # Python 3.12.3
 
+import dis
 from turtle import width
 import typing
 import copy
 from enum import Enum
 import os
+import math
 
 
 # info is called when you create your Battlesnake on play.battlesnake.com
@@ -249,7 +251,7 @@ class Evaluator:
         return x_average,y_average
     
     def get_food_directions(self):
-        FOOD_POINT = 1
+        FOOD_POINT = 1.0
         food_directions = {'U': 0, 'D' : 0, 'L' : 0, 'R' : 0}
         food = self.get_best_food()
         if food == None :
@@ -263,6 +265,23 @@ class Evaluator:
         elif food['y'] < self.my_snake.head['y']:
             food_directions["D"] += FOOD_POINT   
         return food_directions
+    
+    def get_enemy_directions(self):
+        ENEMY_POINT = 1.0
+        my_head = self.my_snake.head
+        enemy_head = self.enemy_snake.head
+        distance = abs(my_head['x'] - enemy_head['x']) + abs(my_head['y'] - enemy_head['y'])
+        enemy_directions = {'U': 0, 'D' : 0, 'L' : 0, 'R' : 0}
+        if enemy_head['x'] > my_head['x']:
+            enemy_directions["R"] += ENEMY_POINT
+        elif enemy_head['x'] < my_head['x']:
+            enemy_directions["L"] += ENEMY_POINT
+        if enemy_head['y'] > my_head['y']:
+            enemy_directions["U"] += ENEMY_POINT
+        elif enemy_head['y'] < my_head['y']:
+            enemy_directions["D"] += ENEMY_POINT
+        return distance,enemy_directions   
+
       
 class GridState(Enum):
     SPACE = 0
@@ -550,20 +569,32 @@ def move(game_state: typing.Dict) -> typing.Dict:
 def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
     INF = 10**12
     W_SAFE = 1.0
-    W_WIN  = 5.0
+    W_WIN  = 2.0
     W_LOSE = 5.0
-    W_SPACE = 100
-    STALKING_W = 50.0
-    HEALTH_LEBEL = 40
+    W_NODE = 1.0
+    W_SPACE = 1.0
+    W_DANGER = 2.0
+    STALKING_W = 5.0
+    FOOD_W = 0
+    HEALTH_LEBEL = 20
+    DISTANCE_LEVEL = 5
     length_diff = my_snake.length - enemy_snake.length
-    if length_diff > 2:
+    distance,enemy_directions = evaluater.get_enemy_directions()
+
+    if length_diff >= 3:
         if my_snake.health > HEALTH_LEBEL:
             FOOD_W = 0
+            STALKING_W = 100
         else:
             FOOD_W = 100 * (MAX_HEALTH - my_snake.health)
+    elif length_diff > 0:
+        FOOD_W = 100 * (MAX_HEALTH - my_snake.health)
     else:
-        FOOD_W = 100 * (MAX_HEALTH - my_snake.health - length_diff)
-    if board.turn <= 30:
+        if distance >= DISTANCE_LEVEL:
+            FOOD_W = 100 * (MAX_HEALTH - my_snake.health - length_diff)
+        else:
+            STALKING_W = -100
+    if board.turn <= 50:
         FOOD_W = 5000
 
 
@@ -575,61 +606,109 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
 
     for d, s in result.items():
         scores[d] = 0.0
-        # 空間スコアの取得
-        my_space_score = s.my_space_danger / s.node_count
-        enemy_space_score = s.enemy_space_danger / s.node_count
+        LOSE_W = 1.0
+
+        # =====================
+        # 【第1層】制約判定
+        # =====================
         if s.safe_count == 0:
             scores[d] = -INF
+            LOSE_W = 0
+            continue
 
         if d in headon_moves:
             if d not in headon_win_moves:
                 scores[d] = -INF // 2
+                LOSE_W = 0
+                continue
             elif s.lose_count == 0:
                 scores[d] = INF
-        if my_snake.length > evaluater.enemy_snake.length:
-            # 死角のみを狙う関数を呼び出す
-            stalking_score = evaluater.get_stalking_score(STRING_DIRS_CONVERSION[d])
-            scores[d] += stalking_score * STALKING_W
+                continue
+
+        # =====================
+        # 【第2層】正規化評価
+        # =====================
+        node = max(1, s.node_count)
+
+        # 生存率系（0〜1）
+        safe_rate = safe_div(s.safe_count, node)
+        win_rate  = safe_div(s.win_count, node)
+        lose_rate = safe_div(s.lose_count, node)
 
         survival_score = (
-            W_SAFE * s.safe_count
-            + W_WIN  * s.win_count
-            - W_LOSE * s.lose_count
+            W_SAFE * safe_rate
+            + W_WIN  * win_rate
+            - W_LOSE * lose_rate
+            + W_NODE * math.log(node)
         )
 
-        if s.node_count > 0:
-            space_score = (s.my_move_sum - s.enemy_move_sum) / s.node_count
-        else:
-            space_score = 0
-        food_score =  food_directions.get(d, 0)
+        # 空間評価（平均との差）
+        my_space   = safe_div(s.my_move_sum, node)
+        enemy_space = safe_div(s.enemy_move_sum, node)
+        space_score = my_space - enemy_space
+
+        # 危険度（小さい方が良い）
+        my_danger   = safe_div(s.my_space_danger, node)
+        enemy_danger = safe_div(s.enemy_space_danger, node)
+        danger_score = enemy_danger - my_danger
+
+        # =====================
+        # 【第3層】戦術ボーナス
+        # =====================
+        food_score = food_directions.get(d, 0)
+
+        stalking_score = 0.0
+        if my_snake.length > evaluater.enemy_snake.length:
+            stalking_score = evaluater.get_stalking_score(
+                STRING_DIRS_CONVERSION[d]
+            )
+        stalking_score = enemy_directions.get(d,0)
+
+        # =====================
+        # 合成
+        # =====================
         scores[d] += (
             survival_score
             + W_SPACE * space_score
-            + FOOD_W *food_score
+            + W_DANGER * danger_score
+            + FOOD_W * food_score
+            + STALKING_W * stalking_score * LOSE_W
         )
 
-        print("direction : ",d)
-        print("survival:",survival_score,"space:",W_SPACE * space_score,"food:",FOOD_W * food_score)
-        print("my_space: ",my_space_score)
-        print("enemy_space: ",enemy_space_score)
-
+        # ---- debug ----
+        print(f"[{d}]")
+        print(" survival:", survival_score)
+        print(" space:", space_score)
+        print(" danger:", danger_score)
+        print(" food:", food_score)
+        print(" stalking:", stalking_score)
 
     if scores:
         best_move = max(scores, key=scores.get)
-        if scores[best_move] < -INF // 4:
-            return STRING_DIRS_CONVERSION[best_move[-1]]
-        for d in scores:
-            print(d, scores[d], 
-            "safe", result[d].safe_count,
-            "win", result[d].win_count,
-            "lose", result[d].lose_count)
-    else:
-        if len(safe_moves) > 0:
-            return STRING_DIRS_CONVERSION[safe_moves[-1]]
-        else:
-            return STRING_DIRS_CONVERSION["R"]
 
-    return STRING_DIRS_CONVERSION[best_move]
+        if scores[best_move] < -INF // 4:
+            return STRING_DIRS_CONVERSION[best_move]
+
+        for d in scores:
+            s = result[d]
+            print(
+                d, scores[d],
+                "safe", s.safe_count,
+                "win", s.win_count,
+                "lose", s.lose_count
+            )
+
+        return STRING_DIRS_CONVERSION[best_move]
+
+    # フォールバック
+    if safe_moves:
+        return STRING_DIRS_CONVERSION[safe_moves[-1]]
+    return STRING_DIRS_CONVERSION["R"]
+
+
+def safe_div(x, y):
+    return x / y if y > 0 else 0.0
+
 
 # Start server when `python main.py` is run
 if __name__ == "__main__":
