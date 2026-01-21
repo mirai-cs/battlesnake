@@ -36,6 +36,7 @@ def end(game_state: typing.Dict):
 
 MAX_HEALTH = 100
 WIDTH = HEIGHT = 11
+MAX_DEPTH = 8
 
 class Snake:
     def __init__(self, snake):
@@ -109,6 +110,8 @@ class Evaluator:
         self.board = board
         self.my_snake = my_snake
         self.enemy_snake = enemy_snake
+        self.MAX_DEPTH = MAX_DEPTH
+        self.grid_copy = copy.deepcopy(board.grid)
         
     def get_safe_moves(self):
         is_empty = {"U": True, "D": True, "L": True, "R": True}
@@ -141,6 +144,104 @@ class Evaluator:
                     headon_win_moves.append(move)
         print(safe_moves,headon_moves,headon_win_moves)
         return safe_moves,headon_moves,headon_win_moves
+    
+    def asess_reachble_counts(self):
+        reachble_counts = {"U": 0, "D": 0, "L": 0, "R": 0}
+        for move in ["U", "D", "L", "R"]:
+            current_x,current_y = self.my_snake.head['x'],self.my_snake.head['y']
+            next_x,next_y = current_x,current_y
+            self.grid_copy_fill = copy.deepcopy(self.board.grid)
+            if move == 'U':
+                next_y += 1
+            elif move == 'D':
+                next_y -= 1
+            elif move == 'L':
+                next_x -= 1
+            elif move == 'R':
+                next_x += 1
+            first_depth = 0
+            food_count = 0
+            tail_stop = False
+            if self.board.is_food(current_x,current_y) == True:
+                food_count = 1
+                tail_stop = True
+                max_depth,total_food_count = self._count_reachble_ways(next_x,next_y,first_depth,move,food_count,tail_stop)
+                reachble_counts[move] = max_depth
+            else:
+                reachble_counts[move],total_food_count = self._count_reachble_ways(next_x,next_y,first_depth,move,food_count,tail_stop)
+            #self.explored_counts[move] = self.count_explored()
+        return reachble_counts
+
+    def _count_reachble_ways(self,current_x,current_y,depth,first_move,food_count,tail_stop):
+        if self.is_empty(current_x,current_y,tail_stop) == False or self.grid_copy[current_x][current_y] == GridState.MY_EXPLORED:
+            return depth,food_count
+        if depth == self.MAX_DEPTH:
+            if self.grid_copy[current_x][current_y] != GridState.MY_TAIL:
+                return depth + 2,food_count
+            else:
+                return depth + 1,food_count
+            
+        max_depth = depth
+
+        tail_index = self.my_snake.length + food_count - depth - 2
+        next_tail_x,next_tail_y,current_tail_x,current_tail_y = None,None,None,None
+
+        next_tail_cell,current_tail_cell = None,None
+        if tail_index >= 0:
+            next_tail_x = self.my_snake.body[tail_index]['x']
+            next_tail_y = self.my_snake.body[tail_index]['y']
+            current_tail_x = self.my_snake.body[tail_index+1]['x']
+            current_tail_y = self.my_snake.body[tail_index+1]['y']
+            next_tail_cell = self.grid_copy[next_tail_x][next_tail_y]
+            current_tail_cell = self.grid_copy[current_tail_x][current_tail_y]
+            self.grid_copy[next_tail_x][next_tail_y] = GridState.MY_TAIL
+            self.grid_copy[current_tail_x][current_tail_y] = GridState.SPACE
+
+        current_cell = self.grid_copy[current_x][current_y]
+        self.grid_copy[current_x][current_y] = GridState.MY_EXPLORED
+        self.grid_copy_fill[current_x][current_y] = GridState.MY_EXPLORED
+        if food_count >= 1:
+            self.grid_copy_fill_food[current_x][current_y] = GridState.MY_EXPLORED
+
+        past_explored_count = None
+        next_food_count = food_count
+        next_tail_stop = False
+        if self.board.grid[current_x][current_y] == GridState.FOOD:
+            food_distant = depth
+            next_food_count += 1
+            next_tail_stop = True
+            if next_food_count == 1:
+                self.grid_copy_fill_food = copy.deepcopy(self.grid_copy)
+
+        min_food_count = 3
+
+        if depth < self.MAX_DEPTH:
+            for vector in [[1,0],[-1,0],[0,1],[0,-1]]:
+                total_depth,total_food_count = self._count_reachble_ways(current_x + vector[0],current_y + vector[1],depth + 1,first_move,next_food_count,next_tail_stop)
+                if max_depth < total_depth:
+                    max_depth = total_depth
+                    min_food_count = total_food_count
+                elif  max_depth == total_depth and min_food_count > total_food_count:
+                    max_depth = total_depth
+                    min_food_count = total_food_count  
+
+                #if next_tail_stop == True and next_food_count == 1 and total_depth >= self.MAX_DEPTH:  #if self.board.grid[current_x][current_y] == GridState.FOOD:
+                    #self.food_candidates.append({'move':first_move,'distant':food_distant,'max_depth':total_depth,'food_count':total_food_count,'explored_count':self.count_explored_food() - depth})               
+                              
+        self.grid_copy[current_x][current_y] = current_cell
+        if tail_index >= 0:
+            self.grid_copy[next_tail_x][next_tail_y] = next_tail_cell
+            self.grid_copy[current_tail_x][current_tail_y] = current_tail_cell
+        return max_depth,min_food_count
+      
+    def is_empty(self,x,y,tail_stop):
+        if x < 0 or y < 0 or x >= self.board.width or y >= self.board.height:
+            return False
+        if self.grid_copy[x][y] == GridState.SPACE or self.grid_copy[x][y] == GridState.FOOD or (self.grid_copy[x][y] == GridState.MY_TAIL and tail_stop == False and self.board.turn > 3):   #empty,food,tail
+            return True
+        else:
+            return False   
+
     
     def get_stalking_score(self, move):
         """
@@ -594,11 +695,12 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
             FOOD_W = 100 * (MAX_HEALTH - my_snake.health - length_diff)
         else:
             STALKING_W = -100
-    if board.turn <= 50:
+    if board.turn <= 60:
         FOOD_W = 5000
 
 
     safe_moves, headon_moves, headon_win_moves = evaluater.get_safe_moves()
+    reachble_counts = evaluater.asess_reachble_counts()
     food_directions = evaluater.get_food_directions()
     result = simulator.evaluate_first_moves()
 
@@ -608,10 +710,7 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
         scores[d] = 0.0
         LOSE_W = 1.0
 
-        # =====================
-        # 【第1層】制約判定
-        # =====================
-        if s.safe_count == 0:
+        if s.safe_count == 0 or reachble_counts[d] < MAX_DEPTH:
             scores[d] = -INF
             LOSE_W = 0
             continue
@@ -625,9 +724,6 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
                 scores[d] = INF
                 continue
 
-        # =====================
-        # 【第2層】正規化評価
-        # =====================
         node = max(1, s.node_count)
 
         # 生存率系（0〜1）
@@ -642,31 +738,21 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
             + W_NODE * math.log(node)
         )
 
-        # 空間評価（平均との差）
+        # 空間評価
         my_space   = safe_div(s.my_move_sum, node)
         enemy_space = safe_div(s.enemy_move_sum, node)
         space_score = my_space - enemy_space
 
-        # 危険度（小さい方が良い）
+        # 危険度
         my_danger   = safe_div(s.my_space_danger, node)
         enemy_danger = safe_div(s.enemy_space_danger, node)
         danger_score = enemy_danger - my_danger
 
-        # =====================
-        # 【第3層】戦術ボーナス
-        # =====================
         food_score = food_directions.get(d, 0)
 
-        stalking_score = 0.0
-        if my_snake.length > evaluater.enemy_snake.length:
-            stalking_score = evaluater.get_stalking_score(
-                STRING_DIRS_CONVERSION[d]
-            )
         stalking_score = enemy_directions.get(d,0)
 
-        # =====================
         # 合成
-        # =====================
         scores[d] += (
             survival_score
             + W_SPACE * space_score
@@ -695,12 +781,11 @@ def choose_best_move(board, my_snake,enemy_snake, evaluater, simulator):
                 d, scores[d],
                 "safe", s.safe_count,
                 "win", s.win_count,
-                "lose", s.lose_count
+                "lose", s.lose_count,
+                "max_depth",reachble_counts[d]
             )
 
         return STRING_DIRS_CONVERSION[best_move]
-
-    # フォールバック
     if safe_moves:
         return STRING_DIRS_CONVERSION[safe_moves[-1]]
     return STRING_DIRS_CONVERSION["R"]
